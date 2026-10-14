@@ -1,0 +1,309 @@
+// BluesLab — gedeelde frontend-logica (BL-2). Vanilla JS, geen build-stap.
+"use strict";
+
+const INSTRUMENTEN = { bb: "Bes klarinet", eb: "Alt sax" };
+
+function $(sel) { return document.querySelector(sel); }
+
+function el(tag, attrs = {}, ...kinderen) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kinderen.flat()) {
+    if (k !== null && k !== undefined) e.append(k instanceof Node ? k : String(k));
+  }
+  return e;
+}
+
+// "Bbm7/Eb" -> "B♭m7/E♭", "F#" -> "F♯" (alleen voortekens direct na een notenletter).
+function mooi(naam) {
+  if (!naam) return "";
+  return naam.replace(/([A-G])b/g, "$1♭").replace(/([A-G])#/g, "$1♯");
+}
+
+function param(naam) { return new URLSearchParams(location.search).get(naam); }
+
+function instrument() {
+  try { return localStorage.getItem("instrument") === "eb" ? "eb" : "bb"; }
+  catch { return "bb"; }
+}
+function zetInstrument(i) {
+  try { localStorage.setItem("instrument", i); } catch { /* privé-venster: negeren */ }
+}
+
+function toonFout(tekst) {
+  const vak = $("#fout");
+  if (!vak) { alert(tekst); return; }
+  vak.textContent = tekst;
+  vak.hidden = !tekst;
+}
+
+async function api(pad, opties = {}) {
+  const init = { credentials: "same-origin", ...opties };
+  if (opties.json !== undefined) {
+    init.method = init.method || "POST";
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(opties.json);
+  }
+  const r = await fetch(pad, init);
+  if (r.status === 401 && !pad.endsWith("/login")) {
+    location.href = "index.html";
+    throw new Error("Log eerst in.");
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const d = data.detail;
+    const tekst = Array.isArray(d) ? d.map(x => (typeof x === "string" ? x : x.msg)).join("\n")
+      : (d || `Fout ${r.status}`);
+    throw new Error(tekst);
+  }
+  return data;
+}
+
+function instrumentKnoppen(bijWissel) {
+  const huidig = instrument();
+  return el("div", { class: "wissel", role: "group", "aria-label": "Instrument" },
+    Object.entries(INSTRUMENTEN).map(([code, label]) =>
+      el("button", {
+        type: "button", "aria-pressed": String(code === huidig),
+        onclick: () => { zetInstrument(code); bijWissel(code); },
+      }, label)));
+}
+
+// --- index.html: login + setlists -----------------------------------------
+async function paginaIndex() {
+  const login = $("#login"), lijst = $("#setlists");
+  try {
+    await api("/api/ik");
+  } catch {
+    login.hidden = false;
+    $("#login-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        await api("/api/login", { json: { wachtwoord: $("#wachtwoord").value } });
+        location.reload();
+      } catch (e) { toonFout(e.message); }
+    });
+    return;
+  }
+  lijst.hidden = false;
+  $("#nieuwe-setlist").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      const { id } = await api("/api/setlists", { json: { naam: $("#setlist-naam").value } });
+      location.href = `setlist.html?id=${id}`;
+    } catch (e) { toonFout(e.message); }
+  });
+  $("#uitloggen").addEventListener("click", async () => {
+    await api("/api/logout", { method: "POST" });
+    location.reload();
+  });
+  const sets = await api("/api/setlists");
+  $("#setlist-lijst").replaceChildren(...sets.map(s =>
+    el("li", {}, el("a", { href: `setlist.html?id=${s.id}` }, s.naam),
+      el("span", { class: "klein" }, ` · ${s.aantal} nummers`))));
+}
+
+// --- setlist.html -----------------------------------------------------------
+async function paginaSetlist() {
+  const id = param("id");
+  let setlist;
+
+  async function laad() {
+    setlist = await api(`/api/setlists/${id}`);
+    $("#titel").textContent = setlist.naam;
+    document.title = `${setlist.naam} · BluesLab`;
+    teken();
+  }
+
+  function teken() {
+    const inst = instrument();
+    $("#instrument").replaceChildren(instrumentKnoppen(teken));
+    $("#songs").replaceChildren(...setlist.songs.map((s, i) => {
+      const doel = s.status === "gecontroleerd" ? `song.html?id=${s.id}` : `controle.html?id=${s.id}`;
+      return el("li", { class: "song" },
+        el("a", { href: doel }, el("strong", {}, s.titel), " ",
+          el("span", { class: "klein" }, s.artiest)),
+        el("span", { class: "sleutel" }, mooi(s.sleutels[inst]) || "?"),
+        s.status !== "gecontroleerd" ? el("span", { class: "badge" }, "controleren") : null,
+        el("span", { class: "acties" },
+          el("button", { type: "button", "aria-label": "Omhoog", disabled: i === 0,
+            onclick: () => verplaats(i, -1) }, "▲"),
+          el("button", { type: "button", "aria-label": "Omlaag",
+            disabled: i === setlist.songs.length - 1, onclick: () => verplaats(i, 1) }, "▼"),
+          el("button", { type: "button", "aria-label": "Verwijderen",
+            onclick: () => verwijder(s) }, "✕")));
+    }));
+  }
+
+  async function verplaats(i, stap) {
+    const ids = setlist.songs.map(s => s.id);
+    [ids[i], ids[i + stap]] = [ids[i + stap], ids[i]];
+    try {
+      await api(`/api/setlists/${id}/volgorde`, { method: "PUT", json: { song_ids: ids } });
+      await laad();
+    } catch (e) { toonFout(e.message); }
+  }
+
+  async function verwijder(s) {
+    if (!confirm(`"${s.titel}" verwijderen?`)) return;
+    try { await api(`/api/songs/${s.id}`, { method: "DELETE" }); await laad(); }
+    catch (e) { toonFout(e.message); }
+  }
+
+  $("#pdfs").addEventListener("change", async (ev) => {
+    const bestanden = [...ev.target.files];
+    const status = $("#upload-status");
+    toonFout("");
+    for (const [n, f] of bestanden.entries()) {
+      status.textContent = `PDF ${n + 1} van ${bestanden.length} lezen: ${f.name} (duurt ± een minuut)…`;
+      const fd = new FormData();
+      fd.append("bestand", f);
+      try {
+        await api(`/api/setlists/${id}/songs`, { method: "POST", body: fd });
+      } catch (e) {
+        toonFout(`${f.name}: ${e.message}`);
+      }
+      await laad();
+    }
+    status.textContent = "";
+    ev.target.value = "";
+  });
+
+  await laad();
+}
+
+// --- controle.html ----------------------------------------------------------
+async function paginaControle() {
+  const id = param("id");
+  const song = await api(`/api/songs/${id}`);
+  document.title = `Controle: ${song.titel} · BluesLab`;
+  $("#titel-veld").value = song.titel;
+  $("#artiest-veld").value = song.artiest;
+  $("#tempo-veld").value = song.tempo == null ? "" : song.tempo;
+  $("#voortekening-veld").value = song.voortekening;
+  if (song.onparseerbaar.length) {
+    $("#waarschuwing").hidden = false;
+    $("#waarschuwing").textContent = "Onbekende akkoorden: " +
+      song.onparseerbaar.map(o => `maat ${o.maat}: ${o.akkoord}`).join(", ");
+  }
+
+  const regels = song.regels.map(r => ({ start_maat: r.start_maat, maten: r.maten.map(m => m.join(" ")) }));
+  const delen = song.delen.map(d => ({ ...d }));
+
+  function tekenRegels() {
+    $("#regels").replaceChildren(...regels.map((r, ri) => {
+      const volgende = regels[ri + 1];
+      const verwacht = volgende ? volgende.start_maat - r.start_maat : null;
+      const fout = verwacht !== null && verwacht !== r.maten.length;
+      return el("div", { class: fout ? "regel fout" : "regel" },
+        el("div", { class: "regelkop" }, `Maat ${r.start_maat}`,
+          fout ? el("span", { class: "klein" },
+            ` · ${r.maten.length} maten, ${verwacht} verwacht`) : null),
+        el("div", { class: "maten" },
+          r.maten.map((m, mi) => el("input", {
+            class: "maat", value: m, "aria-label": `Regel ${r.start_maat}, maat ${mi + 1}`,
+            oninput: (ev) => { r.maten[mi] = ev.target.value; },
+          })),
+          el("button", { type: "button", "aria-label": "Maat toevoegen",
+            onclick: () => { r.maten.push(""); tekenRegels(); } }, "+"),
+          el("button", { type: "button", "aria-label": "Laatste maat weghalen",
+            disabled: r.maten.length === 0,
+            onclick: () => { r.maten.pop(); tekenRegels(); } }, "−")));
+    }));
+  }
+
+  function tekenDelen() {
+    $("#delen").replaceChildren(...delen.map((d, di) => el("div", { class: d.afwijking ? "deel fout" : "deel" },
+      el("input", { value: d.naam, "aria-label": "Naam", oninput: (e) => { d.naam = e.target.value; } }),
+      el("input", { type: "number", value: d.start_maat, "aria-label": "Van maat",
+        oninput: (e) => { d.start_maat = Number(e.target.value); } }),
+      el("input", { type: "number", value: d.eind_maat, "aria-label": "Tot en met maat",
+        oninput: (e) => { d.eind_maat = Number(e.target.value); } }),
+      el("input", { value: d.concert_key, "aria-label": "Toonsoort (concert)",
+        oninput: (e) => { d.concert_key = e.target.value; d.key_source = "handmatig"; } }),
+      el("label", {}, el("input", { type: "checkbox", checked: d.solo_geschikt,
+        onchange: (e) => { d.solo_geschikt = e.target.checked; } }), " solo"),
+      el("button", { type: "button", "aria-label": "Deel verwijderen",
+        onclick: () => { delen.splice(di, 1); tekenDelen(); } }, "✕"),
+      d.afwijking ? el("div", { class: "klein" },
+        `Engine denkt ${mooi(d.engine_key)}, Claude ${mooi(d.concert_key)}. Kies zelf.`) : null,
+      d.reden ? el("div", { class: "klein" }, d.reden) : null)));
+  }
+
+  $("#deel-toevoegen").addEventListener("click", () => {
+    const laatste = delen[delen.length - 1];
+    delen.push({ naam: "Couplet", start_maat: laatste ? laatste.eind_maat + 1 : 1,
+      eind_maat: laatste ? laatste.eind_maat + 1 : 1,
+      concert_key: laatste ? laatste.concert_key : "", key_source: "handmatig",
+      solo_geschikt: false, reden: "" });
+    tekenDelen();
+  });
+
+  $("#opslaan").addEventListener("click", async () => {
+    toonFout("");
+    const body = {
+      titel: $("#titel-veld").value,
+      artiest: $("#artiest-veld").value,
+      tempo: $("#tempo-veld").value === "" ? null : Number($("#tempo-veld").value),
+      voortekening: Number($("#voortekening-veld").value || 0),
+      regels: regels.map(r => ({ start_maat: r.start_maat,
+        maten: r.maten.map(m => m.split(/\s+/).filter(Boolean)) })),
+      delen: delen.map(({ naam, start_maat, eind_maat, concert_key, key_source, solo_geschikt, reden }) =>
+        ({ naam, start_maat, eind_maat, concert_key, key_source, solo_geschikt, reden })),
+    };
+    try {
+      await api(`/api/songs/${id}`, { method: "PUT", json: body });
+      location.href = `song.html?id=${id}`;
+    } catch (e) { toonFout(e.message); }
+  });
+
+  tekenRegels();
+  tekenDelen();
+}
+
+// --- song.html: speelschema ---------------------------------------------------
+async function paginaSong() {
+  const id = param("id");
+  $("#naar-controle").href = `controle.html?id=${id}`;
+
+  async function laad(inst) {
+    const s = await api(`/api/songs/${id}/schema?instrument=${inst}`);
+    document.title = `${s.titel} · BluesLab`;
+    $("#instrument").replaceChildren(instrumentKnoppen(laad));
+    $("#kop").replaceChildren(
+      el("h1", {}, s.titel), el("div", { class: "klein" }, s.artiest),
+      el("div", { class: "kopinfo" },
+        s.tempo ? el("span", {}, `♩ = ${s.tempo}`) : null,
+        el("span", {}, `concert ${mooi(s.concert_key)}`),
+        el("span", { class: "sleutel" }, `${INSTRUMENTEN[inst]}: ${mooi(s.geschreven_key)}`)),
+      s.status !== "gecontroleerd" ? el("div", { class: "badge" }, "Nog niet gecontroleerd") : null);
+    $("#schema").replaceChildren(...s.delen.map(d => el("section", { class: d.wissel ? "deel wissel-deel" : "deel" },
+      el("h2", {}, `${d.naam} `, el("span", { class: "klein" }, `maat ${d.start_maat}–${d.eind_maat}`)),
+      d.wissel ? el("div", { class: "wisselmelding" }, `Toonsoortwissel → ${mooi(d.geschreven_key)}`) : null,
+      el("div", { class: "klein" }, `Toonsoort ${mooi(d.geschreven_key)} · ladder `,
+        el("span", { class: "ladder" }, d.toonladder.map(mooi).join(" "))),
+      el("table", { class: "raster" },
+        el("thead", {}, el("tr", {}, el("th", {}, "#"), el("th", {}, "Akkoord"),
+          el("th", {}, "Tonen"), el("th", {}, "Doel"))),
+        el("tbody", {}, d.maten.map(m => el("tr", {},
+          el("td", { class: "nr" }, m.nr),
+          el("td", { class: "akkoord" }, m.akkoorden.map(a =>
+            a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
+            .flatMap((x, i) => (i ? [" ", x] : [x]))),
+          el("td", { class: "tonen" }, m.akkoorden.filter(a => !a.fout)
+            .map(a => a.tonen.map(mooi).join(" ")).join(" | ")),
+          el("td", { class: "doel" }, mooi(m.doeltoon)))))))));
+  }
+
+  await laad(instrument());
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const paginas = { index: paginaIndex, setlist: paginaSetlist, controle: paginaControle, song: paginaSong };
+  const pagina = paginas[document.body.dataset.pagina];
+  if (pagina) pagina().catch(e => toonFout(e.message));
+});
