@@ -49,7 +49,8 @@ async function api(pad, opties = {}) {
     init.body = JSON.stringify(opties.json);
   }
   const r = await fetch(pad, init);
-  if (r.status === 401 && !pad.endsWith("/login")) {
+  // Niet ingelogd: naar de loginpagina, behalve als we daar al zijn (anders herlaadlus).
+  if (r.status === 401 && !pad.endsWith("/login") && document.body.dataset.pagina !== "index") {
     location.href = "index.html";
     throw new Error("Log eerst in.");
   }
