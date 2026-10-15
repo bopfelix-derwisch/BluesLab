@@ -340,3 +340,11 @@ def test_401_logt_reden_zonder_waarde(maak, caplog):
     assert any("geen cookie" in r for r in regels)
     assert any("ongeldige cookie" in r for r in regels)
     assert not any("geheimewaarde" in r for r in regels)
+
+
+def test_cookietest_zet_varianten_en_meldt_terug(maak):
+    c = maak()
+    r1 = c.get("/api/cookietest")
+    assert r1.status_code == 200
+    r2 = c.get("/api/cookietest")
+    assert "t_zoals_login" in r2.json()["terug"]
