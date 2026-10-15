@@ -422,10 +422,11 @@ async function paginaSong() {
   }
 
   // Tik op een maat = startpunt; nog eens tikken = weer vanaf het begin.
+  // Speelt de begeleiding al, dan begint hij meteen daar.
   function kiesStart(nr) {
     oefen.start = oefen.start === nr ? null : nr;
     markeerStart();
-    if (speler) tekenSpeler();
+    if (speler) wijzig(() => {});
   }
 
   function speel() {

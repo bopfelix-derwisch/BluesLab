@@ -13,9 +13,9 @@ HARNAS = Path(__file__).parent / "web_harness.js"
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node ontbreekt")
 
 
-def draai(pagina, ik_status, zoek="", fixtures=None, audio=False):
+def draai(pagina, ik_status, zoek="", fixtures=None, audio=False, acties=()):
     env = dict(os.environ, BLUESLAB_FIXTURES=json.dumps(fixtures or {}),
-               BLUESLAB_AUDIO="1" if audio else "0")
+               BLUESLAB_AUDIO="1" if audio else "0", BLUESLAB_ACTIES=json.dumps(list(acties)))
     uit = subprocess.run(["node", str(HARNAS), pagina, str(ik_status), zoek],
                          capture_output=True, text=True, check=True, timeout=20, env=env)
     return json.loads(uit.stdout.strip().splitlines()[-1])
@@ -196,3 +196,30 @@ def test_kies_fragment_exacte_titel_eerst():
     r = [{"trackName": "Crazy (feat. David Benjamin) [Acoustic Version]", "previewUrl": "akoestisch"},
          {"trackName": "Crazy", "previewUrl": "origineel"}]
     assert js(f"kiesFragment({json.dumps(r)}, 0, 'Crazy')")["url"] == "origineel"
+
+
+def _speel(*acties):
+    return draai("song", 200, "?id=1", {"/api/songs/": SCHEMA, "/api/setlists/": SETLIST},
+                 audio=True, acties=acties)
+
+
+def test_tik_op_maat_tijdens_spelen_start_daar_opnieuw():
+    assert _speel("tekst=▶ Speel")["starts"] == 1
+    assert _speel("tekst=▶ Speel", "data-nr=3")["starts"] == 2
+
+
+def test_tik_op_maat_zonder_spelen_start_niet():
+    assert _speel("data-nr=3")["starts"] == 0
+
+
+def test_speel_zet_audiosessie_op_playback():
+    # Anders dempt de stille modus van iPad/iPhone de begeleiding (het fragment klinkt wel).
+    assert _speel()["audiosessie"] == "auto"
+    assert _speel("tekst=▶ Speel")["audiosessie"] == "playback"
+
+
+def test_ander_fragment_knop_is_groot_genoeg():
+    import re
+    css = (Path(__file__).parent.parent / "web" / "style.css").read_text()
+    regel = re.search(r"\.fragment button\.stil\s*\{([^}]*)\}", css)
+    assert regel and "min-height: 44px" in regel.group(1)

@@ -117,7 +117,9 @@ def test_speelplan_zonder_maten():
     assert (g, duur) == ([], 0)
 
 
-NEP = ("(() => { const log = []; let klaar = 0; const ctx = {currentTime: 0, resume() {}};"
+NEP = ("(() => { const log = []; let klaar = 0; const ctx = {currentTime: 0, resume() {},"
+       " destination: 'luidspreker', createGain: () => ({gain: {setValueAtTime() {},"
+       " linearRampToValueAtTime() {}, cancelScheduledValues() {}}, connect() {}, disconnect() {}})};"
        " const s = new Speler({maakContext: () => ctx, opKlaar: () => { klaar += 1; },"
        " geluid: (c, e, w) => log.push([e.soort, Math.round(w * 1000), e.maat])});")
 
@@ -153,3 +155,16 @@ def test_speler_stop_meldt_een_keer():
 
 def test_kan_spelen_zonder_web_audio():
     assert js("kanSpelen()") is False
+
+
+def test_stop_dempt_wat_al_gepland_is():
+    # Gebeurtenissen tot 0,12 s vooruit en een basnoot van bijna een tel klinken anders na Stop door.
+    r = js("(() => { const log = []; const ctx = {currentTime: 0, resume() {}, destination: 'luidspreker',"
+           " createGain: () => ({gain: {setValueAtTime: (v, t) => log.push(['zet', v]),"
+           " linearRampToValueAtTime: (v, t) => log.push(['naar', v]), cancelScheduledValues() {}},"
+           " connect: d => log.push(['aan', d]), disconnect() {}})};"
+           " const s = new Speler({maakContext: () => ctx, geluid: (c, e, w, uit) => log.push(['geluid', !!uit])});"
+           " s.start(speelplan([], {bpm: 120})); s.stop(); return log; })()")
+    assert ["aan", "luidspreker"] in r
+    assert ["geluid", True] in r
+    assert r[-1] == ["naar", 0]

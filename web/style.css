@@ -117,3 +117,4 @@ details.deel > summary { font-size: 1.2rem; padding: 10px 0; cursor: pointer; }
 .maatvak.speelt .nr, .maatvak.speelt .tonen, .maatvak.speelt .doel { color: inherit; }
 .fragment { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0; }
 .fragmentknop { min-height: 44px; text-align: left; }
+.fragment button.stil { min-height: 44px; padding: 4px 6px; }

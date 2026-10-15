@@ -12,13 +12,17 @@ const luisterNaar = [];
 let nullKinderen = 0;  // "selector:event" voor elke addEventListener op een element
 let maatvakken = 0;   // elementen met data-nr (aan te tikken maatvakken)
 const fetches = [];
+const gemaakt = [];   // elementen uit createElement, voor BLUESLAB_ACTIES
 const nepElement = (sel) => elementen[sel] || (elementen[sel] = {
-  hidden: true, value: "", textContent: "",
-  addEventListener(t) { luisterNaar.push(`${String(sel)}:${t}`); },
+  hidden: true, value: "", textContent: "", _attrs: {}, _on: {}, _tekst: "",
+  addEventListener(t, f) { luisterNaar.push(`${String(sel)}:${t}`); this._on[t] = f; },
   // null/undefined als kind wordt in een echte browser de tekst "null": tellen.
   replaceChildren(...k) { nullKinderen += k.filter(x => x == null).length; },
-  append(...k) { nullKinderen += k.filter(x => x == null).length; },
-  setAttribute(k) { if (k === "data-nr") maatvakken += 1; },
+  append(...k) {
+    nullKinderen += k.filter(x => x == null).length;
+    this._tekst += k.filter(x => typeof x === "string").join("");
+  },
+  setAttribute(k, v) { this._attrs[k] = v; if (k === "data-nr") maatvakken += 1; },
   classList: { add() {}, remove() {} },
   closest() { return null; },
   pause() {},
@@ -39,7 +43,7 @@ const ctx = {
   document: {
     body: { dataset: { pagina } },
     querySelector: nepElement,
-    createElement: () => nepElement(Symbol("el")),
+    createElement: () => { const e = nepElement(Symbol("el")); gemaakt.push(e); return e; },
     addEventListener: (t, f) => { luisteraars[t] = f; },
   },
   location: {
@@ -54,17 +58,42 @@ const ctx = {
     ok: ikStatus < 400,
     json: async () => (ikStatus < 400 ? antwoordVoor(pad) : { detail: "Log eerst in." }),
   }),
-  navigator: { wakeLock: { request: async () => { wakelock += 1; return { addEventListener() {} }; } } },
+  navigator: { audioSession: { type: "auto" }, wakeLock: { request: async () => { wakelock += 1; return { addEventListener() {} }; } } },
 };
-// BLUESLAB_AUDIO=1: de browser heeft Web Audio (alleen de constructor; er wordt niets gespeeld).
-if (process.env.BLUESLAB_AUDIO === "1") ctx.AudioContext = function AudioContext() {};
+// BLUESLAB_AUDIO=1: de browser heeft Web Audio (nep: er klinkt niets; starts telt de resume-aanroepen).
+let starts = 0;
+const nepParam = () => ({ setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {},
+  cancelScheduledValues() {} });
+const nepKnoop = extra => Object.assign({ connect: x => x, disconnect() {} }, extra);
+if (process.env.BLUESLAB_AUDIO === "1") {
+  ctx.AudioContext = function AudioContext() {
+    return { currentTime: 0, destination: {}, resume: async () => { starts += 1; },
+      createGain: () => nepKnoop({ gain: nepParam() }),
+      createOscillator: () => nepKnoop({ frequency: {}, start() {}, stop() {} }) };
+  };
+}
 vm.createContext(ctx);
 for (const f of ["speler.js", "app.js"]) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "web", f), "utf8"), ctx);
 }
 luisteraars.DOMContentLoaded();
-setTimeout(() => {
+// Optioneel: BLUESLAB_ACTIES = JSON ["data-nr=3", "tekst=▶ Speel", ...]: klik na het laden
+// op het laatst gemaakte element met dat attribuut of die tekst.
+const acties = JSON.parse(process.env.BLUESLAB_ACTIES || "[]");
+const wacht = ms => new Promise(r => setTimeout(r, ms));
+(async () => {
+  await wacht(50);
+  for (const a of acties) {
+    const [k, v] = a.split("=");
+    const doel = gemaakt.filter(e => (k === "tekst" ? e._tekst === v : String(e._attrs[k]) === v)).pop();
+    if (!doel || !doel._on.click) throw new Error(`niets om te klikken: ${a}`);
+    doel._on.click();
+    await wacht(20);
+  }
+  await wacht(30);
   console.log(JSON.stringify({ navigaties, login_zichtbaar: !nepElement("#login").hidden,
     fout: nepElement("#fout").textContent, luisterNaar, wakelock, nullKinderen,
-    speler_zichtbaar: !nepElement("#speler").hidden, maatvakken, fetches }));
-}, 50);
+    speler_zichtbaar: !nepElement("#speler").hidden, maatvakken, fetches, starts,
+    audiosessie: ctx.navigator.audioSession.type }));
+  process.exit(0);  // een spelende Speler houdt anders de klok (setInterval) open
+})();

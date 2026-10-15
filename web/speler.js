@@ -116,7 +116,7 @@ const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
 const KLANK = { bas: ["triangle", 0.35], akkoord: ["triangle", 0.1], tik: ["square", 0.04] };
 
 // Eén gebeurtenis als korte toon(en) met een envelop; inteltikken klinken hoger.
-function speelGeluid(ctx, e, wanneer) {
+function speelGeluid(ctx, e, wanneer, uit) {
   const [vorm, sterkte] = KLANK[e.soort];
   const tonen = e.soort === "tik" ? [e.maat === null ? 96 : 84] : e.midi;
   for (const m of tonen) {
@@ -127,7 +127,7 @@ function speelGeluid(ctx, e, wanneer) {
     vol.gain.setValueAtTime(0.0001, wanneer);
     vol.gain.linearRampToValueAtTime(sterkte, wanneer + 0.005);
     vol.gain.exponentialRampToValueAtTime(0.0001, wanneer + e.duur);
-    osc.connect(vol).connect(ctx.destination);
+    osc.connect(vol).connect(uit);
     osc.start(wanneer);
     osc.stop(wanneer + e.duur + 0.02);
   }
@@ -146,8 +146,13 @@ class Speler {
 
   start(plan, herhaal = null) {
     this.stop();
+    // Afspelen als media: anders dempt de stille modus van iPad/iPhone de begeleiding.
+    if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback";
     if (!this.ctx) this.ctx = this.maakContext();
     if (this.ctx.resume) this.ctx.resume();  // iOS: mag alleen binnen een tik
+    // Eigen hoofdvolume per keer spelen, zodat Stop ook al geplande tonen dempt.
+    this.uit = this.ctx.createGain();
+    this.uit.connect(this.ctx.destination);
     this.plan = plan;
     this.herhaal = herhaal && herhaal.duur > 0 ? herhaal : null;
     this.i = 0;
@@ -171,7 +176,7 @@ class Speler {
       const e = this.plan.gebeurtenissen[this.i];
       const wanneer = this.t0 + e.t;
       if (wanneer >= tot) return;
-      this.geluid(this.ctx, e, wanneer);
+      this.geluid(this.ctx, e, wanneer, this.uit);
       if (e.maat !== this.laatsteMaat) {
         this.laatsteMaat = e.maat;
         this.wek(wanneer, () => this.opMaat(e.maat));
@@ -197,6 +202,15 @@ class Speler {
     this.klok = null;
     this.wekkers.forEach(w => clearTimeout(w));
     this.wekkers = [];
+    if (this.uit) {  // snel uitfaden; ontkoppelen zodra het stil is
+      const uit = this.uit;
+      const nu = this.ctx.currentTime;
+      uit.gain.cancelScheduledValues(nu);
+      uit.gain.setValueAtTime(1, nu);
+      uit.gain.linearRampToValueAtTime(0, nu + 0.02);
+      setTimeout(() => uit.disconnect(), 100);
+      this.uit = null;
+    }
     if (speelde) { this.opMaat(null); this.opKlaar(); }
   }
 }
