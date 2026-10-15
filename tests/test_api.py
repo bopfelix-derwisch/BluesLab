@@ -363,3 +363,10 @@ def test_formulier_login_fout_en_limiet(maak):
     for _ in range(5):
         r = c.post("/login", data={"wachtwoord": "fout"}, follow_redirects=False)
     assert r.headers["location"] == "/?fout=limiet"
+
+
+def test_schema_bevat_setlist_id(maak):
+    c = _login(maak())
+    sl = _setlist(c)
+    sid = _upload(c, sl).json()["id"]
+    assert c.get(f"/api/songs/{sid}/schema").json()["setlist_id"] == sl

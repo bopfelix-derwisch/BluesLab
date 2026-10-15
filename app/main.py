@@ -334,7 +334,8 @@ def maak_app(instellingen: dict = None) -> FastAPI:
         voice = VOICE[instrument]
         delen = speelschema(flatten(s["regels"]), s["delen"], voice)
         return {
-            "id": s["id"], "titel": s["titel"], "artiest": s["artiest"], "tempo": s["tempo"],
+            "id": s["id"], "setlist_id": s["setlist_id"],
+            "titel": s["titel"], "artiest": s["artiest"], "tempo": s["tempo"],
             "maatsoort": s["maatsoort"], "status": s["status"], "instrument": instrument,
             "concert_key": delen[0]["concert_key"] if delen else None,
             "geschreven_key": delen[0]["geschreven_key"] if delen else None,

@@ -26,6 +26,26 @@ function mooi(naam) {
 
 function param(naam) { return new URLSearchParams(location.search).get(naam); }
 
+// Per deel: start_maat van het eerste eerdere deel met precies dezelfde akkoorden, anders null.
+function herhalingen(delen) {
+  const vingerafdruk = d => d.maten.map(m => m.akkoorden.map(a => a.concert).join(" ")).join("|");
+  const gezien = {};
+  return delen.map(d => {
+    const v = vingerafdruk(d);
+    if (v in gezien) return gezien[v];
+    gezien[v] = d.start_maat;
+    return null;
+  });
+}
+
+// Vorig en volgend nummer in de setlist-volgorde (ids), of null.
+function buren(songs, id) {
+  const i = songs.findIndex(s => s.id === id);
+  if (i < 0) return { vorige: null, volgende: null };
+  return { vorige: i > 0 ? songs[i - 1].id : null,
+    volgende: i < songs.length - 1 ? songs[i + 1].id : null };
+}
+
 function instrument() {
   try { return localStorage.getItem("instrument") === "eb" ? "eb" : "bb"; }
   catch { return "bb"; }
@@ -263,37 +283,83 @@ async function paginaControle() {
 }
 
 // --- song.html: speelschema ---------------------------------------------------
+// Scherm aan houden tijdens het spelen (Safari 16.4+); stil negeren waar het niet kan.
+function houdSchermAan() {
+  if (typeof navigator === "undefined" || !navigator.wakeLock) return;
+  const vraag = () => navigator.wakeLock.request("screen").catch(() => {});
+  vraag();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") vraag();
+  });
+}
+
+async function zetNavigatie(setlistId, id) {
+  $("#terug").href = `setlist.html?id=${setlistId}`;
+  const sl = await api(`/api/setlists/${setlistId}`);
+  const b = buren(sl.songs, id);
+  for (const [sel, sid] of [["#vorige", b.vorige], ["#volgende", b.volgende]]) {
+    const a = $(sel);
+    a.hidden = sid === null;
+    if (sid !== null) a.href = `song.html?id=${sid}`;
+  }
+}
+
+function maatRaster(maten) {
+  return el("div", { class: "maatraster" }, maten.map(m => el("div", { class: "maatvak" },
+    el("span", { class: "nr" }, m.nr),
+    el("div", { class: "akkoord" }, m.akkoorden.map(a =>
+      a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
+      .flatMap((x, i) => (i ? [" ", x] : [x]))),
+    el("div", { class: "tonen" }, m.akkoorden.filter(a => !a.fout)
+      .map(a => a.tonen.map(mooi).join(" ")).join(" | ")),
+    m.doeltoon ? el("div", { class: "doel" }, `→ ${mooi(m.doeltoon)}`) : null)));
+}
+
 async function paginaSong() {
-  const id = param("id");
+  const id = Number(param("id"));
   $("#naar-controle").href = `controle.html?id=${id}`;
+  houdSchermAan();
+  let navigatieGezet = false;
 
   async function laad(inst) {
     const s = await api(`/api/songs/${id}/schema?instrument=${inst}`);
     document.title = `${s.titel} · BluesLab`;
+    if (!navigatieGezet) {
+      navigatieGezet = true;
+      zetNavigatie(s.setlist_id, id).catch(() => { /* navigatie is bijzaak */ });
+    }
+    $("#balk-titel").textContent = s.titel;
     $("#instrument").replaceChildren(instrumentKnoppen(laad));
-    $("#kop").replaceChildren(
+    $("#kop").replaceChildren(...[
       el("h1", {}, s.titel), el("div", { class: "klein" }, s.artiest),
       el("div", { class: "kopinfo" },
         s.tempo ? el("span", {}, `♩ = ${s.tempo}`) : null,
         el("span", {}, `concert ${mooi(s.concert_key)}`),
         el("span", { class: "sleutel" }, `${INSTRUMENTEN[inst]}: ${mooi(s.geschreven_key)}`)),
-      s.status !== "gecontroleerd" ? el("div", { class: "badge" }, "Nog niet gecontroleerd") : null);
-    $("#schema").replaceChildren(...s.delen.map(d => el("section", { class: d.wissel ? "deel wissel-deel" : "deel" },
-      el("h2", {}, `${d.naam} `, el("span", { class: "klein" }, `maat ${d.start_maat}–${d.eind_maat}`)),
-      d.wissel ? el("div", { class: "wisselmelding" }, `Toonsoortwissel → ${mooi(d.geschreven_key)}`) : null,
-      el("div", { class: "klein" }, `Toonsoort ${mooi(d.geschreven_key)} · ladder `,
-        el("span", { class: "ladder" }, d.toonladder.map(mooi).join(" "))),
-      el("table", { class: "raster" },
-        el("thead", {}, el("tr", {}, el("th", {}, "#"), el("th", {}, "Akkoord"),
-          el("th", {}, "Tonen"), el("th", {}, "Doel"))),
-        el("tbody", {}, d.maten.map(m => el("tr", {},
-          el("td", { class: "nr" }, m.nr),
-          el("td", { class: "akkoord" }, m.akkoorden.map(a =>
-            a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
-            .flatMap((x, i) => (i ? [" ", x] : [x]))),
-          el("td", { class: "tonen" }, m.akkoorden.filter(a => !a.fout)
-            .map(a => a.tonen.map(mooi).join(" ")).join(" | ")),
-          el("td", { class: "doel" }, mooi(m.doeltoon)))))))));
+      s.status !== "gecontroleerd" ? el("div", { class: "badge" }, "Nog niet gecontroleerd") : null,
+    ].filter(Boolean));  // replaceChildren maakt van null de tekst "null"
+
+    const herh = herhalingen(s.delen);
+    $("#sprong").replaceChildren(...s.delen.map((d, i) =>
+      el("a", { class: "chip", href: `#deel-${i}` }, `${d.naam} ${d.start_maat}`)));
+    $("#schema").replaceChildren(...s.delen.map((d, i) => {
+      const titel = [el("span", { class: "deelnaam" }, d.naam), " ",
+        el("span", { class: "klein" }, `maat ${d.start_maat}–${d.eind_maat}`)];
+      const inhoud = [
+        d.wissel ? el("div", { class: "wisselmelding" }, `Toonsoortwissel → ${mooi(d.geschreven_key)}`) : null,
+        el("div", { class: "klein" }, `Toonsoort ${mooi(d.geschreven_key)} · ladder `,
+          el("span", { class: "ladder" }, d.toonladder.map(mooi).join(" "))),
+        maatRaster(d.maten)];
+      const klasse = d.wissel ? "deel wissel-deel" : "deel";
+      // Herhaling zonder toonsoortwissel: ingeklapt, met een tik open te klappen.
+      if (herh[i] !== null && !d.wissel) {
+        return el("details", { class: klasse, id: `deel-${i}` },
+          el("summary", {}, ...titel, el("span", { class: "klein" },
+            ` — zoals ${s.delen.find(x => x.start_maat === herh[i]).naam} (maat ${herh[i]})`)),
+          ...inhoud);
+      }
+      return el("section", { class: klasse, id: `deel-${i}` }, el("h2", {}, ...titel), ...inhoud);
+    }));
   }
 
   await laad(instrument());

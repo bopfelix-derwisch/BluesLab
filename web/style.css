@@ -50,13 +50,42 @@ button.stil { background: transparent; color: var(--accent); padding: 4px 0; }
 .wisselmelding { background: var(--wissel-bg); color: var(--wissel); font-weight: 700;
   padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
 .ladder { font-weight: 600; color: var(--fg); }
-.raster { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 1.15rem; }
-.raster th { text-align: left; font-size: .8rem; color: var(--zacht); font-weight: 500; }
-.raster td, .raster th { padding: 7px 6px; border-bottom: 1px solid var(--lijn); vertical-align: top; }
-.raster .nr { color: var(--zacht); font-size: .9rem; width: 2.2em; }
-.raster .akkoord { font-weight: 700; font-size: 1.3rem; }
-.raster .tonen { color: var(--zacht); }
-.raster .doel { font-weight: 700; color: var(--accent); }
+/* Speelschema: vaste balk + maten als raster (2 / 4 staand / 8 liggend per regel). */
+body[data-pagina="song"] main { max-width: 1200px; }
+.balk { position: sticky; top: 0; z-index: 5; background: var(--bg);
+  border-bottom: 1px solid var(--lijn); padding: 8px 16px 8px; }
+.balk > * { max-width: 1168px; margin-left: auto; margin-right: auto; }
+.balk-rij { display: flex; align-items: center; gap: 10px; }
+#balk-titel { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.navknop { font-size: 1.3rem; min-width: 48px; min-height: 44px; display: inline-flex;
+  align-items: center; justify-content: center; text-decoration: none;
+  border: 1px solid var(--lijn); border-radius: 8px; }
+.navknop[hidden] { display: none; }
+.balk .wissel { margin: 8px auto 6px; }
+.wissel button { min-height: 44px; }
+.sprong { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.sprong::-webkit-scrollbar { display: none; }
+.chip { flex: none; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--lijn);
+  color: var(--fg); text-decoration: none; font-size: .95rem; }
+.deel { scroll-margin-top: 160px; }
+details.deel > summary { font-size: 1.2rem; padding: 10px 0; cursor: pointer; }
+.deelnaam { font-weight: 700; }
+.maatraster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.maatvak { position: relative; border: 1px solid var(--lijn); border-radius: 8px;
+  padding: 6px 8px 8px; min-height: 5.2em; }
+.maatvak .nr { position: absolute; top: 4px; right: 8px; font-size: .75rem; color: var(--zacht); }
+.maatvak .akkoord { font-weight: 700; font-size: 1.45rem; line-height: 1.2; padding-right: 1.4em; }
+.maatvak .tonen { color: var(--zacht); font-size: .9rem; }
+.maatvak .doel { color: var(--accent); font-weight: 700; }
+@media (min-width: 600px) {
+  .maatraster { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .maatvak .akkoord { font-size: 1.7rem; }
+  .maatvak .tonen { font-size: 1rem; }
+}
+@media (min-width: 1000px) and (orientation: landscape) {
+  .maatraster { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .maatvak .akkoord { font-size: 1.45rem; }
+}
 .fout { color: var(--fout); }
 .regel { margin: 10px 0; }
 .regel.fout .regelkop { color: var(--fout); font-weight: 700; }
