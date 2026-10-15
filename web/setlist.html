@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Setlist · BluesLab</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-pagina="setlist">
+  <main>
+    <p><a href="index.html">← Setlists</a></p>
+    <h1 id="titel">Setlist</h1>
+    <div id="instrument"></div>
+    <p id="fout" class="foutvak" hidden></p>
+    <ol id="songs" class="lijst"></ol>
+    <label class="knop">PDF toevoegen
+      <input id="pdfs" type="file" accept="application/pdf" multiple hidden>
+    </label>
+    <p id="upload-status" class="klein" aria-live="polite"></p>
+  </main>
+</body>
+</html>

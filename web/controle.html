@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controle · BluesLab</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-pagina="controle">
+  <main>
+    <p><a href="javascript:history.back()">← Terug</a></p>
+    <h1>Controle</h1>
+    <p class="klein">Akkoorden in concert pitch, gescheiden door spaties. Rood = klopt niet met de maatnummers of de engine.</p>
+    <p id="fout" class="foutvak" hidden></p>
+    <p id="waarschuwing" class="foutvak" hidden></p>
+    <div class="velden">
+      <label>Titel <input id="titel-veld"></label>
+      <label>Artiest <input id="artiest-veld"></label>
+      <label>Tempo <input id="tempo-veld" type="number" inputmode="numeric"></label>
+      <label>Voortekening <input id="voortekening-veld" type="number" inputmode="numeric"
+        title="kruizen positief, mollen negatief (5 mollen = -5)"></label>
+    </div>
+    <h2>Maten</h2>
+    <div id="regels"></div>
+    <h2>Delen</h2>
+    <div id="delen"></div>
+    <p><button id="deel-toevoegen" type="button" class="stil">+ Deel</button></p>
+    <p><button id="opslaan" type="button">Opslaan</button></p>
+  </main>
+</body>
+</html>

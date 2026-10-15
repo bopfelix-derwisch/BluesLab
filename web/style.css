@@ -1,0 +1,76 @@
+/* BluesLab — mobile-first, licht/donker volgens het systeem. */
+:root {
+  --bg: #fbf8f3; --fg: #1f1b16; --zacht: #6b6258; --lijn: #e3dcd2;
+  --accent: #1d4e89; --accent-fg: #ffffff; --fout: #b3261e; --fout-bg: #fdecea;
+  --wissel: #8a4b00; --wissel-bg: #fff1dc;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15130f; --fg: #f1ebe2; --zacht: #a59b8f; --lijn: #3a342c;
+    --accent: #8db8ee; --accent-fg: #0d1a2b; --fout: #ff8a80; --fout-bg: #3b1715;
+    --wissel: #ffc56b; --wissel-bg: #3a2a10;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 17px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.6rem; margin: .3em 0; }
+h2 { font-size: 1.2rem; margin: 1.2em 0 .3em; }
+a { color: var(--accent); }
+.klein { color: var(--zacht); font-size: .9rem; }
+input { font: inherit; color: inherit; background: transparent; border: 1px solid var(--lijn);
+  border-radius: 6px; padding: 8px 10px; min-width: 0; }
+button, .knop { font: inherit; border: 0; border-radius: 6px; padding: 9px 14px;
+  background: var(--accent); color: var(--accent-fg); cursor: pointer; display: inline-block; }
+button:disabled { opacity: .35; cursor: default; }
+button.stil { background: transparent; color: var(--accent); padding: 4px 0; }
+.foutvak { white-space: pre-line; background: var(--fout-bg); color: var(--fout);
+  padding: 10px 12px; border-radius: 6px; }
+.lijst { padding: 0; list-style: none; }
+.lijst li { padding: 10px 0; border-bottom: 1px solid var(--lijn); }
+.rij { display: flex; gap: 8px; }
+.rij input { flex: 1; }
+.song { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.song a { flex: 1 1 60%; text-decoration: none; color: inherit; }
+.sleutel { font-weight: 700; color: var(--accent); }
+.badge { font-size: .8rem; background: var(--wissel-bg); color: var(--wissel);
+  padding: 2px 8px; border-radius: 99px; display: inline-block; }
+.acties button { padding: 6px 10px; background: transparent; color: var(--zacht); }
+.wissel { display: flex; gap: 0; margin: 8px 0 12px; }
+.wissel button { flex: 1; background: transparent; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 0; }
+.wissel button:first-child { border-radius: 6px 0 0 6px; }
+.wissel button:last-child { border-radius: 0 6px 6px 0; }
+.wissel button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.kopinfo { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0; }
+.deel { margin: 14px 0; padding-top: 4px; }
+.wissel-deel { border-left: 4px solid var(--wissel); padding-left: 10px; }
+.wisselmelding { background: var(--wissel-bg); color: var(--wissel); font-weight: 700;
+  padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
+.ladder { font-weight: 600; color: var(--fg); }
+.raster { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 1.15rem; }
+.raster th { text-align: left; font-size: .8rem; color: var(--zacht); font-weight: 500; }
+.raster td, .raster th { padding: 7px 6px; border-bottom: 1px solid var(--lijn); vertical-align: top; }
+.raster .nr { color: var(--zacht); font-size: .9rem; width: 2.2em; }
+.raster .akkoord { font-weight: 700; font-size: 1.3rem; }
+.raster .tonen { color: var(--zacht); }
+.raster .doel { font-weight: 700; color: var(--accent); }
+.fout { color: var(--fout); }
+.regel { margin: 10px 0; }
+.regel.fout .regelkop { color: var(--fout); font-weight: 700; }
+.maten { display: flex; flex-wrap: wrap; gap: 6px; }
+.maat { width: 6.5em; }
+.regel.fout .maat { border-color: var(--fout); }
+.velden { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.velden label { display: flex; flex-direction: column; font-size: .9rem; color: var(--zacht); }
+.velden input { color: var(--fg); }
+#delen .deel { display: grid; grid-template-columns: 1fr 4.5em 4.5em 5em auto auto; gap: 6px;
+  align-items: center; border-bottom: 1px solid var(--lijn); padding-bottom: 8px; }
+#delen .deel.fout input { border-color: var(--fout); }
+#delen .deel .klein { grid-column: 1 / -1; }
+@media (max-width: 520px) {
+  #delen .deel { grid-template-columns: 1fr 1fr 1fr; }
+  .velden { grid-template-columns: 1fr; }
+}

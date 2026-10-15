@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BluesLab</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-pagina="index">
+  <main>
+    <h1>BluesLab</h1>
+    <p id="fout" class="foutvak" hidden></p>
+    <section id="login" hidden>
+      <form id="login-form">
+        <label for="wachtwoord">Wachtwoord</label>
+        <input id="wachtwoord" type="password" autocomplete="current-password" required>
+        <button type="submit">Inloggen</button>
+      </form>
+    </section>
+    <section id="setlists" hidden>
+      <h2>Setlists</h2>
+      <ul id="setlist-lijst" class="lijst"></ul>
+      <form id="nieuwe-setlist" class="rij">
+        <input id="setlist-naam" placeholder="Nieuwe setlist, bv. Next week" required>
+        <button type="submit">Maken</button>
+      </form>
+      <p><button id="uitloggen" type="button" class="stil">Uitloggen</button></p>
+    </section>
+  </main>
+</body>
+</html>
