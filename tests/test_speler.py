@@ -115,3 +115,41 @@ def test_speelplan_start_en_eind():
 def test_speelplan_zonder_maten():
     g, duur = plan([], {"bpm": 120, "inteltel": 0})
     assert (g, duur) == ([], 0)
+
+
+NEP = ("(() => { const log = []; let klaar = 0; const ctx = {currentTime: 0, resume() {}};"
+       " const s = new Speler({maakContext: () => ctx, opKlaar: () => { klaar += 1; },"
+       " geluid: (c, e, w) => log.push([e.soort, Math.round(w * 1000), e.maat])});")
+
+
+def test_speler_plant_vooruit_vanaf_t0():
+    r = js(NEP + " s.start(speelplan([{nr: 1, akkoorden: [{concert: 'C'}]}], {bpm: 120}));"
+           " const eerst = log.slice(); s.vooruit(2.2); const daarna = log.slice(); s.stop();"
+           " return {eerst, daarna, klaar, speelt: s.speelt}; })()")
+    assert r["eerst"] == [["tik", 100, None]]          # alleen wat binnen 0,12 s valt
+    assert r["daarna"][-2:] == [["tik", 2100, 1], ["bas", 2100, 1]]
+    assert len(r["daarna"]) == 6
+    assert (r["klaar"], r["speelt"]) == (1, False)
+
+
+def test_speler_herhaalt_na_het_plan():
+    r = js(NEP + " const m = [{nr: 1, akkoorden: [{concert: 'C'}]}];"
+           " s.start(speelplan(m, {bpm: 120}), speelplan(m, {bpm: 120, inteltel: 0}));"
+           " s.vooruit(10.1); s.stop(); return log.filter(x => x[0] === 'bas').map(x => x[1]); })()")
+    # eerste keer na 4 inteltikken (t0 0,1 + 2 s), daarna elke 2 s zonder inteltel
+    assert r == [2100, 3100, 4100, 5100, 6100, 7100, 8100, 9100]
+
+
+def test_speler_leeg_herhaalplan_geen_eindeloze_lus():
+    r = js(NEP + " s.start(speelplan([], {bpm: 120}), speelplan([], {bpm: 120, inteltel: 0}));"
+           " s.vooruit(100); const n = log.length; s.stop(); return n; })()")
+    assert r == 4
+
+
+def test_speler_stop_meldt_een_keer():
+    r = js(NEP + " s.start(speelplan([], {bpm: 120})); s.stop(); s.stop(); return klaar; })()")
+    assert r == 1
+
+
+def test_kan_spelen_zonder_web_audio():
+    assert js("kanSpelen()") is False

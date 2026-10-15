@@ -100,3 +100,103 @@ function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity,
   });
   return { gebeurtenissen: g, duur: (inteltel + gekozen.length * tellen) * tel };
 }
+
+const VOORUIT = 0.12;  // seconden vooruit plannen
+const KLOK_MS = 25;
+
+function kanSpelen() {
+  return typeof AudioContext !== "undefined" || typeof webkitAudioContext !== "undefined";
+}
+
+function nieuweContext() {
+  return typeof AudioContext !== "undefined" ? new AudioContext() : new webkitAudioContext();
+}
+
+const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
+const KLANK = { bas: ["triangle", 0.35], akkoord: ["triangle", 0.1], tik: ["square", 0.04] };
+
+// Eén gebeurtenis als korte toon(en) met een envelop; inteltikken klinken hoger.
+function speelGeluid(ctx, e, wanneer) {
+  const [vorm, sterkte] = KLANK[e.soort];
+  const tonen = e.soort === "tik" ? [e.maat === null ? 96 : 84] : e.midi;
+  for (const m of tonen) {
+    const osc = ctx.createOscillator();
+    const vol = ctx.createGain();
+    osc.type = vorm;
+    osc.frequency.value = hz(m);
+    vol.gain.setValueAtTime(0.0001, wanneer);
+    vol.gain.linearRampToValueAtTime(sterkte, wanneer + 0.005);
+    vol.gain.exponentialRampToValueAtTime(0.0001, wanneer + e.duur);
+    osc.connect(vol).connect(ctx.destination);
+    osc.start(wanneer);
+    osc.stop(wanneer + e.duur + 0.02);
+  }
+}
+
+// Speelt een speelplan op de AudioContext-klok; `herhaal` volgt daarna eindeloos.
+class Speler {
+  constructor({ maakContext = nieuweContext, geluid = speelGeluid,
+    opMaat = () => {}, opKlaar = () => {} } = {}) {
+    Object.assign(this, { maakContext, geluid, opMaat, opKlaar });
+    this.ctx = null;
+    this.speelt = false;
+    this.klok = null;
+    this.wekkers = [];
+  }
+
+  start(plan, herhaal = null) {
+    this.stop();
+    if (!this.ctx) this.ctx = this.maakContext();
+    if (this.ctx.resume) this.ctx.resume();  // iOS: mag alleen binnen een tik
+    this.plan = plan;
+    this.herhaal = herhaal && herhaal.duur > 0 ? herhaal : null;
+    this.i = 0;
+    this.laatsteMaat = undefined;
+    this.t0 = this.ctx.currentTime + 0.1;
+    this.speelt = true;
+    this.klok = setInterval(() => this.vooruit(this.ctx.currentTime + VOORUIT), KLOK_MS);
+    this.vooruit(this.ctx.currentTime + VOORUIT);
+  }
+
+  // Plant alle gebeurtenissen die vóór `tot` (contextklok) beginnen.
+  vooruit(tot) {
+    while (this.speelt) {
+      if (this.i >= this.plan.gebeurtenissen.length) {
+        if (!this.herhaal) { this.einde(); return; }
+        this.t0 += this.plan.duur;
+        this.plan = this.herhaal;
+        this.i = 0;
+        continue;
+      }
+      const e = this.plan.gebeurtenissen[this.i];
+      const wanneer = this.t0 + e.t;
+      if (wanneer >= tot) return;
+      this.geluid(this.ctx, e, wanneer);
+      if (e.maat !== this.laatsteMaat) {
+        this.laatsteMaat = e.maat;
+        this.wek(wanneer, () => this.opMaat(e.maat));
+      }
+      this.i++;
+    }
+  }
+
+  einde() {  // alles gepland: na de laatste tel netjes stoppen
+    clearInterval(this.klok);
+    this.klok = null;
+    this.wek(this.t0 + this.plan.duur, () => this.stop());
+  }
+
+  wek(wanneer, f) {
+    this.wekkers.push(setTimeout(f, Math.max(0, (wanneer - this.ctx.currentTime) * 1000)));
+  }
+
+  stop() {
+    const speelde = this.speelt;
+    this.speelt = false;
+    clearInterval(this.klok);
+    this.klok = null;
+    this.wekkers.forEach(w => clearTimeout(w));
+    this.wekkers = [];
+    if (speelde) { this.opMaat(null); this.opKlaar(); }
+  }
+}
