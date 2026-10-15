@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nummer · BluesLab</title>
-  <link rel="stylesheet" href="style.css?v=3">
-  <script src="app.js?v=4" defer></script>
+  <link rel="stylesheet" href="style.css?v=4">
+  <script src="speler.js?v=1" defer></script>
+  <script src="app.js?v=5" defer></script>
 </head>
 <body data-pagina="song">
   <header class="balk">
@@ -16,11 +17,14 @@
       <a id="volgende" class="navknop" aria-label="Volgend nummer" hidden>▶</a>
     </div>
     <div id="instrument"></div>
+    <div id="speler" class="spelerbalk" hidden></div>
     <nav id="sprong" class="sprong" aria-label="Naar deel"></nav>
   </header>
   <main>
     <p id="fout" class="foutvak" hidden></p>
     <header id="kop"></header>
+    <div id="fragment" class="fragment"></div>
+    <p id="hulp" class="klein" hidden>Tik op een maat om daar te beginnen. Hoor je niets? Zet het geluid aan.</p>
     <div id="schema"></div>
     <p><a id="naar-controle" href="#">Bewerken</a></p>
   </main>

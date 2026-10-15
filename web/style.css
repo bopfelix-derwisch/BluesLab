@@ -103,3 +103,17 @@ details.deel > summary { font-size: 1.2rem; padding: 10px 0; cursor: pointer; }
   #delen .deel { grid-template-columns: 1fr 1fr 1fr; }
   .velden { grid-template-columns: 1fr; }
 }
+/* Oefenen: speelbalk, startmaat, cursor, fragment. */
+.spelerbalk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 6px; }
+.spelerbalk[hidden] { display: none; }
+.speelknop { min-height: 44px; min-width: 6.5em; }
+.balk .spelerbalk .wissel { margin: 0; }
+.spelerbalk .wissel button { flex: none; padding: 9px 12px; }
+.spelerbalk button.stil { min-height: 44px; padding: 4px 6px; }
+.spelerbalk button.stil[aria-pressed="true"] { font-weight: 700; }
+.maatvak { cursor: pointer; }
+.maatvak.start { box-shadow: inset 0 0 0 2px var(--accent); }
+.maatvak.speelt { background: var(--accent); color: var(--accent-fg); }
+.maatvak.speelt .nr, .maatvak.speelt .tonen, .maatvak.speelt .doel { color: inherit; }
+.fragment { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0; }
+.fragmentknop { min-height: 44px; text-align: left; }

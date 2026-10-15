@@ -13,8 +13,9 @@ HARNAS = Path(__file__).parent / "web_harness.js"
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node ontbreekt")
 
 
-def draai(pagina, ik_status, zoek="", fixtures=None):
-    env = dict(os.environ, BLUESLAB_FIXTURES=json.dumps(fixtures or {}))
+def draai(pagina, ik_status, zoek="", fixtures=None, audio=False):
+    env = dict(os.environ, BLUESLAB_FIXTURES=json.dumps(fixtures or {}),
+               BLUESLAB_AUDIO="1" if audio else "0")
     uit = subprocess.run(["node", str(HARNAS), pagina, str(ik_status), zoek],
                          capture_output=True, text=True, check=True, timeout=20, env=env)
     return json.loads(uit.stdout.strip().splitlines()[-1])
@@ -157,3 +158,41 @@ def test_speel_bereik_herhaalt_het_deel_van_de_startmaat():
 
 def test_speel_bereik_zonder_delen():
     assert js("speelBereik([], null, true)") == {"start": 1, "eind": 0, "lusStart": 1}
+
+
+# --- Oefenen: songpagina ------------------------------------------------------
+
+ITUNES = {"resultCount": 1, "results": [
+    {"trackName": "Spooky", "artistName": "Dusty", "previewUrl": "https://audio/1.m4a"}]}
+
+
+def test_songpagina_speelbalk_en_fragment():
+    r = draai("song", 200, "?id=1", {"/api/songs/": SCHEMA, "/api/setlists/": SETLIST,
+                                     "https://itunes.apple.com/": ITUNES}, audio=True)
+    assert r["fout"] == ""
+    assert r["speler_zichtbaar"] is True
+    assert r["nullKinderen"] == 0
+    assert any(f.startswith("https://itunes.apple.com/search?term=Spooky%20Dusty") for f in r["fetches"])
+    assert r["maatvakken"] == 6  # elk maatvak is aan te tikken als startmaat
+
+
+def test_songpagina_zonder_web_audio_geen_speelbalk():
+    r = draai("song", 200, "?id=1", {"/api/songs/": SCHEMA, "/api/setlists/": SETLIST})
+    assert r["fout"] == ""
+    assert r["speler_zichtbaar"] is False
+    assert r["nullKinderen"] == 0
+
+
+def test_kies_fragment_titel_gaat_voor():
+    # Echt iTunes-antwoord voor "Spooky Bill Wyman & The Rhythm Kings": de Stones stonden bovenaan.
+    r = [{"trackName": "Sympathy For The Devil", "artistName": "The Rolling Stones", "previewUrl": "s"},
+         {"trackName": "Spooky", "artistName": "Bill Wyman's Rhythm Kings", "previewUrl": "a"},
+         {"trackName": "spooky (live)", "artistName": "Iemand", "previewUrl": "b"}]
+    assert [js(f"kiesFragment({json.dumps(r)}, {i}, 'Spooky')")["url"] for i in range(3)] == ["a", "b", "s"]
+    assert js(f"kiesFragment({json.dumps(r)}, 0)")["url"] == "s"  # zonder titel: volgorde van iTunes
+
+
+def test_kies_fragment_exacte_titel_eerst():
+    r = [{"trackName": "Crazy (feat. David Benjamin) [Acoustic Version]", "previewUrl": "akoestisch"},
+         {"trackName": "Crazy", "previewUrl": "origineel"}]
+    assert js(f"kiesFragment({json.dumps(r)}, 0, 'Crazy')")["url"] == "origineel"

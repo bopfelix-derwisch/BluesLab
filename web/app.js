@@ -284,8 +284,17 @@ async function paginaControle() {
 
 // --- song.html: oefenen (fragment + meespelen) --------------------------------
 // iTunes-zoekresultaten -> de gekozen preview (index loopt rond), of null.
-function kiesFragment(resultaten, index) {
-  const met = (resultaten || []).filter(r => r.previewUrl).slice(0, 5);
+// Precies de titel gaat voor, dan "begint met de titel": iTunes zet soms een
+// ander nummer of een akoestische versie bovenaan.
+function kiesFragment(resultaten, index, titel = "") {
+  const t = titel.trim().toLowerCase();
+  const past = r => {
+    const naam = String(r.trackName || "").toLowerCase();
+    return naam === t ? 0 : naam.startsWith(t) ? 1 : 2;
+  };
+  const met = (resultaten || []).filter(r => r.previewUrl)
+    .map((r, i) => [past(r), i, r]).sort((x, y) => x[0] - y[0] || x[1] - y[1])
+    .map(x => x[2]).slice(0, 5);
   if (!met.length) return null;
   const i = ((index % met.length) + met.length) % met.length;
   return { url: met[i].previewUrl, track: met[i].trackName, artiest: met[i].artistName,
@@ -329,8 +338,9 @@ async function zetNavigatie(setlistId, id) {
   }
 }
 
-function maatRaster(maten) {
-  return el("div", { class: "maatraster" }, maten.map(m => el("div", { class: "maatvak" },
+function maatRaster(maten, opTik) {
+  return el("div", { class: "maatraster" }, maten.map(m => el("div",
+    { class: "maatvak", "data-nr": m.nr, onclick: () => opTik(m.nr) },
     el("span", { class: "nr" }, m.nr),
     el("div", { class: "akkoord" }, m.akkoorden.map(a =>
       a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
@@ -340,18 +350,130 @@ function maatRaster(maten) {
     m.doeltoon ? el("div", { class: "doel" }, `→ ${mooi(m.doeltoon)}`) : null)));
 }
 
+// Cursor op het klinkende maatvak (null = weg); een ingeklapte herhaling gaat open.
+function zetCursor(nr) {
+  const oud = $(".maatvak.speelt");
+  if (oud) oud.classList.remove("speelt");
+  if (nr === null) return;
+  const vak = $(`.maatvak[data-nr="${nr}"]`);
+  if (!vak) return;
+  const dicht = vak.closest("details");
+  if (dicht) dicht.open = true;
+  vak.classList.add("speelt");
+  vak.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+let fragmentAudio = null;
+
+// Fragment van de echte opname (iTunes, 30 s); de keuze wordt per nummer onthouden.
+async function toonFragment(s, bijAfspelen) {
+  const vak = $("#fragment");
+  let resultaten;
+  try {
+    const r = await fetch(fragmentZoekUrl(s.titel, s.artiest));
+    if (!r.ok) throw new Error(String(r.status));
+    resultaten = (await r.json()).results;
+  } catch {
+    vak.replaceChildren(el("span", { class: "klein" }, "Fragment niet beschikbaar."));
+    return;
+  }
+  const sleutel = `fragment-${s.id}`;
+  let index = 0;
+  try { index = Number(localStorage.getItem(sleutel)) || 0; } catch { /* geen opslag */ }
+  const audio = el("audio", { preload: "none" });
+  fragmentAudio = audio;
+  let knop = null;
+  let label = () => "";
+  for (const t of ["play", "pause", "ended"]) {
+    audio.addEventListener(t, () => { if (knop) knop.textContent = label(t === "play"); });
+  }
+  function teken() {
+    const f = kiesFragment(resultaten, index, s.titel);
+    if (!f) { vak.replaceChildren(el("span", { class: "klein" }, "Geen fragment gevonden.")); return; }
+    audio.src = f.url;
+    label = speelt => `${speelt ? "❚❚" : "▶"} Fragment — ${f.track} · ${f.artiest}`;
+    knop = el("button", { class: "fragmentknop", onclick: () => {
+      if (audio.paused) { bijAfspelen(); audio.play().catch(() => {}); } else audio.pause();
+    } }, label(false));
+    vak.replaceChildren(...[knop, f.aantal > 1 ? el("button", { class: "stil", onclick: () => {
+      audio.pause();
+      index = f.index + 1;
+      try { localStorage.setItem(sleutel, String(index)); } catch { /* geen opslag */ }
+      teken();
+    } }, "Ander fragment") : null].filter(Boolean));
+  }
+  teken();
+}
+
 async function paginaSong() {
   const id = Number(param("id"));
   $("#naar-controle").href = `controle.html?id=${id}`;
   houdSchermAan();
-  let navigatieGezet = false;
+  let eersteKeer = true;
+  let schema = null;
+  const oefen = { start: null, tempo: 100, herhaal: false };
+  const speler = kanSpelen() ? new Speler({ opMaat: zetCursor, opKlaar: () => tekenSpeler() }) : null;
+
+  function markeerStart() {
+    const oud = $(".maatvak.start");
+    if (oud) oud.classList.remove("start");
+    const vak = oefen.start === null ? null : $(`.maatvak[data-nr="${oefen.start}"]`);
+    if (vak) vak.classList.add("start");
+  }
+
+  // Tik op een maat = startpunt; nog eens tikken = weer vanaf het begin.
+  function kiesStart(nr) {
+    oefen.start = oefen.start === nr ? null : nr;
+    markeerStart();
+    if (speler) tekenSpeler();
+  }
+
+  function speel() {
+    if (fragmentAudio) fragmentAudio.pause();
+    const maten = schema.delen.flatMap(d => d.maten);
+    const tellen = tellenUit(schema.maatsoort);
+    const bpm = (schema.tempo || 100) * oefen.tempo / 100;
+    const b = speelBereik(schema.delen, oefen.start, oefen.herhaal);
+    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind }),
+      oefen.herhaal ? speelplan(maten, { bpm, tellen, start: b.lusStart, eind: b.eind, inteltel: 0 }) : null);
+    tekenSpeler();
+  }
+
+  // Instelling wijzigen; speelt de begeleiding al, dan opnieuw starten.
+  function wijzig(f) {
+    f();
+    if (speler.speelt) speel(); else tekenSpeler();
+  }
+
+  function tekenSpeler() {
+    const vanaf = speelBereik(schema.delen, oefen.start, false).start;
+    $("#speler").replaceChildren(
+      el("button", { class: "speelknop", onclick: () => (speler.speelt ? speler.stop() : speel()) },
+        speler.speelt ? "■ Stop" : "▶ Speel"),
+      el("span", { class: "klein" }, `vanaf maat ${vanaf}`),
+      el("div", { class: "wissel tempo" }, [50, 75, 100].map(p => el("button",
+        { "aria-pressed": String(p === oefen.tempo), onclick: () => wijzig(() => { oefen.tempo = p; }) },
+        `${p}%`))),
+      el("button", { class: "stil herhaal", "aria-pressed": String(oefen.herhaal),
+        onclick: () => wijzig(() => { oefen.herhaal = !oefen.herhaal; }) },
+        oefen.herhaal ? "🔁 Herhaal dit deel: aan" : "🔁 Herhaal dit deel"));
+  }
 
   async function laad(inst) {
     const s = await api(`/api/songs/${id}/schema?instrument=${inst}`);
+    schema = s;
     document.title = `${s.titel} · BluesLab`;
-    if (!navigatieGezet) {
-      navigatieGezet = true;
+    if (eersteKeer) {
+      eersteKeer = false;
       zetNavigatie(s.setlist_id, id).catch(() => { /* navigatie is bijzaak */ });
+      toonFragment(s, () => { if (speler) speler.stop(); });
+      if (speler) {
+        $("#speler").hidden = false;
+        $("#hulp").hidden = false;
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") speler.stop();
+        });
+      }
     }
     $("#balk-titel").textContent = s.titel;
     $("#instrument").replaceChildren(instrumentKnoppen(laad));
@@ -374,7 +496,7 @@ async function paginaSong() {
         d.wissel ? el("div", { class: "wisselmelding" }, `Toonsoortwissel → ${mooi(d.geschreven_key)}`) : null,
         el("div", { class: "klein" }, `Toonsoort ${mooi(d.geschreven_key)} · ladder `,
           el("span", { class: "ladder" }, d.toonladder.map(mooi).join(" "))),
-        maatRaster(d.maten)];
+        maatRaster(d.maten, kiesStart)];
       const klasse = d.wissel ? "deel wissel-deel" : "deel";
       // Herhaling zonder toonsoortwissel: ingeklapt, met een tik open te klappen.
       if (herh[i] !== null && !d.wissel) {
@@ -385,6 +507,8 @@ async function paginaSong() {
       }
       return el("section", { class: klasse, id: `deel-${i}` }, el("h2", {}, ...titel), ...inhoud);
     }));
+    markeerStart();
+    if (speler) tekenSpeler();
   }
 
   await laad(instrument());
