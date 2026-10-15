@@ -40,5 +40,9 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
 - `find ~` bevriest op orin3 → gebruik `ls <pad>`.
 - Transpositie-teken niet omdraaien; de `--selftest`-asserts vangen dit.
 - Cookie is `Secure`: inloggen alleen via https (de tunnel), niet via `http://localhost:8796`.
+- **Login = gewoon formulier** (`POST /login` → 303), géén `fetch`: iOS Safari 26 bewaarde de sessiecookie uit een fetch-antwoord niet (vastgesteld 2026-10-15). `/api/login` (JSON) bestaat alleen nog voor tests.
+- Een 401 op `/api/*` logt de reden (`geen cookie` + cookienamen, of `ongeldige cookie`), nooit de waarde: `journalctl -u blueslab.service`.
+- Pagina's laden `app.js?v=N`: Cloudflare geeft statische bestanden 4 uur browsercache. **Verhoog `v`** in alle `web/*.html` bij elke wijziging aan `app.js`/`style.css`.
+- Frontend-tests: `tests/test_web.py` draait `web/app.js` met node in een nep-browser (`tests/web_harness.js`).
 - Na een wijziging aan `app/`/`core/`/`web/`: `sudo systemctl restart blueslab.service`.
 - Enharmonische spelling is een rabbit hole → MVP-pragmatisch (story §5), niet perfectioneren.

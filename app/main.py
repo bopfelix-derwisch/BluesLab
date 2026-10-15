@@ -173,16 +173,12 @@ def maak_app(instellingen: dict = None) -> FastAPI:
     async def poortwachter(request: Request, call_next):
         # Vóór FastAPI de body leest: te grote verzoeken en niet-ingelogde API-aanroepen weigeren.
         pad = request.url.path
-        if pad in ("/", "/index.html"):  # diagnose loginprobleem: hoe wordt de pagina geladen?
-            h = request.headers
-            log.info("pagina %s: dest=%s site=%s ua=%s", pad, h.get("sec-fetch-dest", "-"),
-                     h.get("sec-fetch-site", "-"), h.get("user-agent", "-")[:120])
         if pad.startswith("/api/"):
             lengte = request.headers.get("content-length", "")
             if lengte.isdigit() and int(lengte) > MAX_PDF + 1024 * 1024:
                 return JSONResponse({"detail": "Het verzoek is groter dan 10 MB."}, status_code=413)
             cookie = request.cookies.get(auth.COOKIE, "")
-            if pad not in ("/api/login", "/api/logout", "/api/cookietest") and not auth.sessie_geldig(cookie, secret):
+            if pad not in ("/api/login", "/api/logout") and not auth.sessie_geldig(cookie, secret):
                 # Alleen de reden loggen, nooit de waarde.
                 log.info("401 %s: %s", pad, "ongeldige cookie" if cookie else
                          f"geen cookie (cookienamen: {sorted(request.cookies) or 'geen'})")
@@ -221,21 +217,6 @@ def maak_app(instellingen: dict = None) -> FastAPI:
         if not fout:
             zet_sessie(response)
         return response
-
-    @app.get("/api/cookietest")
-    def cookietest(request: Request, response: Response):
-        # TIJDELIJK (diagnose Safari-login): welke cookie-kenmerken bewaart de browser?
-        varianten = {
-            "t_zoals_login": dict(httponly=True, secure=True, samesite="lax", max_age=3600),
-            "t_zonder_httponly": dict(secure=True, samesite="lax", max_age=3600),
-            "t_zonder_maxage": dict(httponly=True, secure=True, samesite="lax"),
-            "t_zonder_secure": dict(httponly=True, samesite="lax", max_age=3600),
-            "t_zonder_samesite": dict(httponly=True, secure=True, samesite=None, max_age=3600),
-        }
-        for naam, opties in varianten.items():
-            response.set_cookie(naam, "1", **opties)
-        return {"terug": sorted(k for k in request.cookies if k.startswith("t_")),
-                "alle_namen": sorted(request.cookies)}
 
     @app.post("/api/logout")
     def logout(response: Response):
