@@ -173,6 +173,10 @@ def maak_app(instellingen: dict = None) -> FastAPI:
     async def poortwachter(request: Request, call_next):
         # Vóór FastAPI de body leest: te grote verzoeken en niet-ingelogde API-aanroepen weigeren.
         pad = request.url.path
+        if pad in ("/", "/index.html"):  # diagnose loginprobleem: hoe wordt de pagina geladen?
+            h = request.headers
+            log.info("pagina %s: dest=%s site=%s ua=%s", pad, h.get("sec-fetch-dest", "-"),
+                     h.get("sec-fetch-site", "-"), h.get("user-agent", "-")[:120])
         if pad.startswith("/api/"):
             lengte = request.headers.get("content-length", "")
             if lengte.isdigit() and int(lengte) > MAX_PDF + 1024 * 1024:
@@ -181,7 +185,7 @@ def maak_app(instellingen: dict = None) -> FastAPI:
             if pad not in ("/api/login", "/api/logout") and not auth.sessie_geldig(cookie, secret):
                 # Alleen de reden loggen, nooit de waarde.
                 log.info("401 %s: %s", pad, "ongeldige cookie" if cookie else
-                         f"geen cookie (cookie-header: {'ja' if 'cookie' in request.headers else 'nee'})")
+                         f"geen cookie (cookienamen: {sorted(request.cookies) or 'geen'})")
                 return JSONResponse({"detail": "Log eerst in."}, status_code=401)
         return await call_next(request)
 
