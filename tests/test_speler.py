@@ -48,3 +48,70 @@ def test_akkoord_midi_onleesbaar(tekst):
     ("4/4", 4), ("3/4", 3), ("2/2", 2), ("6/8", 6), ("", 4), (None, 4), ("x", 4), ("0/4", 4)])
 def test_tellen_uit(maatsoort, tellen):
     assert js(f"tellenUit({json.dumps(maatsoort)})") == tellen
+
+
+def _maten(*akkoorden, eerste=1):
+    return [{"nr": eerste + i, "akkoorden": [{"concert": a} for a in m.split()]}
+            for i, m in enumerate(akkoorden)]
+
+
+def plan(maten, opties):
+    """[ms, soort, midi, maat] per gebeurtenis, plus de duur in ms."""
+    r = js(f"(p => ({{g: p.gebeurtenissen.map(e => [Math.round(e.t * 1000), e.soort, e.midi, e.maat]),"
+           f" duur: Math.round(p.duur * 1000)}}))(speelplan({json.dumps(maten)}, {json.dumps(opties)}))")
+    return r["g"], r["duur"]
+
+
+def test_speelplan_inteltel_en_basritme():
+    g, duur = plan(_maten("C"), {"bpm": 120})
+    assert g == [
+        [0, "tik", [], None], [500, "tik", [], None], [1000, "tik", [], None], [1500, "tik", [], None],
+        [2000, "tik", [], 1], [2000, "bas", [36], 1],
+        [2500, "tik", [], 1], [2500, "akkoord", [60, 64, 67], 1],
+        [3000, "tik", [], 1], [3000, "bas", [36], 1],
+        [3500, "tik", [], 1], [3500, "akkoord", [60, 64, 67], 1]]
+    assert duur == 4000
+
+
+def test_speelplan_twee_akkoorden_elk_halve_maat():
+    g, _ = plan(_maten("C G"), {"bpm": 120, "inteltel": 0})
+    assert [x for x in g if x[1] != "tik"] == [
+        [0, "bas", [36], 1], [500, "akkoord", [60, 64, 67], 1],
+        [1000, "bas", [43], 1], [1500, "akkoord", [55, 59, 62], 1]]
+
+
+def test_speelplan_nc_onleesbaar_en_lege_maat_alleen_tik():
+    g, duur = plan(_maten("N.C.", "Hm", ""), {"bpm": 120, "inteltel": 0})
+    assert {x[1] for x in g} == {"tik"}
+    assert [x[3] for x in g] == [1] * 4 + [2] * 4 + [3] * 4
+    assert duur == 6000
+
+
+def test_speelplan_slash_bas():
+    g, _ = plan(_maten("Bbm7/F"), {"bpm": 120, "inteltel": 0})
+    assert g[1] == [0, "bas", [41], 1]
+
+
+def test_speelplan_drie_kwart():
+    g, duur = plan(_maten("C"), {"bpm": 120, "tellen": 3})
+    assert [x[1] for x in g if x[3] == 1] == ["tik", "bas", "tik", "akkoord", "tik", "akkoord"]
+    assert len([x for x in g if x[3] is None]) == 3
+    assert duur == 3000
+
+
+def test_speelplan_half_tempo():
+    g, duur = plan(_maten("C"), {"bpm": 60, "inteltel": 0})
+    assert [x[0] for x in g if x[1] == "tik"] == [0, 1000, 2000, 3000]
+    assert duur == 4000
+
+
+def test_speelplan_start_en_eind():
+    g, duur = plan(_maten("C", "F", "G", "C"), {"bpm": 120, "start": 2, "eind": 3})
+    assert sorted({x[3] for x in g if x[3] is not None}) == [2, 3]
+    assert g[4] == [2000, "tik", [], 2]
+    assert duur == 6000
+
+
+def test_speelplan_zonder_maten():
+    g, duur = plan([], {"bpm": 120, "inteltel": 0})
+    assert (g, duur) == ([], 0)

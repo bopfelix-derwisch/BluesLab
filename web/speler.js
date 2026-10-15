@@ -68,3 +68,35 @@ function tellenUit(maatsoort) {
   const n = parseInt(String(maatsoort || "").split("/")[0], 10);
   return n >= 1 && n <= 12 ? n : 4;
 }
+
+const TIK_DUUR = 0.03;
+
+// Schema-maten -> {gebeurtenissen: [{t, soort, midi, duur, maat}], duur} in seconden.
+// start/eind: maatnummers (inclusief). inteltel: tikken vooraf (maat null).
+// Per tel een tik; bas op de eerste tel van elk akkoord (en op even tellen), anders het akkoord.
+function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity, inteltel = tellen }) {
+  const tel = 60 / bpm;
+  const g = [];
+  for (let i = 0; i < inteltel; i++) g.push({ t: i * tel, soort: "tik", midi: [], duur: TIK_DUUR, maat: null });
+  const gekozen = maten.filter(m => m.nr >= start && m.nr <= eind);
+  gekozen.forEach((m, mi) => {
+    const begin = (inteltel + mi * tellen) * tel;
+    const akk = m.akkoorden.map(a => akkoordMidi(a.concert));
+    const n = akk.length;
+    for (let b = 0; b < tellen; b++) {
+      const t = begin + b * tel;
+      g.push({ t, soort: "tik", midi: [], duur: TIK_DUUR, maat: m.nr });
+      if (!n) continue;
+      const k = Math.floor(b * n / tellen);
+      const a = akk[k];
+      if (!a || a.nc) continue;
+      const eerste = b === Math.ceil(k * tellen / n);
+      if (eerste || (tellen % 2 === 0 && b % 2 === 0)) {
+        g.push({ t, soort: "bas", midi: [a.bas], duur: 0.9 * tel, maat: m.nr });
+      } else {
+        g.push({ t, soort: "akkoord", midi: a.akkoord, duur: 0.5 * tel, maat: m.nr });
+      }
+    }
+  });
+  return { gebeurtenissen: g, duur: (inteltel + gekozen.length * tellen) * tel };
+}
