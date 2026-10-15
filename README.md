@@ -51,6 +51,10 @@ diatonische ladder elke letter precies één keer.
 Upload een Chordify-PDF, controleer de gelezen maten en krijg per maat een speelschema
 (geschreven akkoord, akkoordtonen, doeltoon) voor Bes klarinet of alt sax.
 
+Oefenen op de songpagina: **▶ Fragment** speelt 30 s van de echte opname (iTunes), en
+**▶ Speel** geeft een eenvoudige begeleiding (bas, akkoord, tik) uit de concert-akkoorden.
+Tik op een maat om daar te beginnen; tempo 50/75/100 %; **🔁 Herhaal dit deel** lust het deel.
+
 ```bash
 # Eenmalig
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt

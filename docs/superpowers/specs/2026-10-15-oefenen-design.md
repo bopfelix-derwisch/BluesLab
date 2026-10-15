@@ -1,6 +1,6 @@
 # BluesLab — oefenen per nummer: fragment + meespeel-begeleiding
 
-**Datum:** 2026-10-15 · **Status:** ter review · **Bouwt op:** BL-2 (speelschema, iPad-weergave)
+**Datum:** 2026-10-15 · **Status:** gebouwd (2026-10-15) · **Bouwt op:** BL-2 (speelschema, iPad-weergave)
 
 ## 1. Doel
 

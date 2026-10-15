@@ -34,7 +34,11 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
   - plan (10 tasks): `docs/superpowers/plans/2026-10-14-blues-site.md`
   - geverifieerd prototype (100 tests groen): `docs/superpowers/plans/2026-10-14-blues-site-proto/`
   - *Status: geïmplementeerd en live (2026-10-15), branch `bl-2-site`. Tests: `.venv/bin/python -m pytest` (live-test: `set -a; . ./.env.secrets; set +a; BLUESLAB_LIVE=1 .venv/bin/python -m pytest tests/test_live.py -s`).*
-- Later: play-along (MIDI/fluidsynth), mic/transcriptie, LLM-coaching, sessielog.
+- **Oefenen per nummer** (fragment + meespeel-begeleiding op de songpagina):
+  spec `docs/superpowers/specs/2026-10-15-oefenen-design.md`, plan `docs/superpowers/plans/2026-10-15-oefenen.md`.
+  Fragment = iTunes Search API vanuit de browser; begeleiding = eigen Web-Audio-synth in `web/speler.js`.
+  Geen serverwijziging. *Status: gebouwd (2026-10-15), branch `bl-2-site`.*
+- Later: mooier geluid (samples), drums/shuffle, live meeluisteren (mic), feedback na de repetitie, LLM-coaching, sessielog.
 
 ## Valkuilen
 - `find ~` bevriest op orin3 → gebruik `ls <pad>`.
@@ -42,7 +46,9 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
 - Cookie is `Secure`: inloggen alleen via https (de tunnel), niet via `http://localhost:8796`.
 - **Login = gewoon formulier** (`POST /login` → 303), géén `fetch`: iOS Safari 26 bewaarde de sessiecookie uit een fetch-antwoord niet (vastgesteld 2026-10-15). `/api/login` (JSON) bestaat alleen nog voor tests.
 - Een 401 op `/api/*` logt de reden (`geen cookie` + cookienamen, of `ongeldige cookie`), nooit de waarde: `journalctl -u blueslab.service`.
-- Pagina's laden `app.js?v=N`: Cloudflare geeft statische bestanden 4 uur browsercache. **Verhoog `v`** in alle `web/*.html` bij elke wijziging aan `app.js`/`style.css`.
-- Frontend-tests: `tests/test_web.py` draait `web/app.js` met node in een nep-browser (`tests/web_harness.js`).
+- Pagina's laden `app.js?v=N`: Cloudflare geeft statische bestanden 4 uur browsercache. **Verhoog `v`** in alle `web/*.html` bij elke wijziging aan `app.js`/`style.css` (en in `song.html` voor `speler.js`).
+- Frontend-tests: `tests/test_web.py` en `tests/test_speler.py` draaien `web/speler.js` + `web/app.js` met node in een nep-browser (`tests/web_harness.js`, `tests/web_eval.js`).
+- **Node op orin3 is v12**: geen `?.` of `??` in `web/*.js`, anders falen de frontend-tests (syntaxfout).
+- Fragmentkeuze: iTunes zet soms een ander nummer bovenaan (Spooky → de Stones); `kiesFragment` laat daarom de exacte titel voorgaan.
 - Na een wijziging aan `app/`/`core/`/`web/`: `sudo systemctl restart blueslab.service`.
 - Enharmonische spelling is een rabbit hole → MVP-pragmatisch (story §5), niet perfectioneren.
