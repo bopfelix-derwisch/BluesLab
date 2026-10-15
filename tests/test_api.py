@@ -328,3 +328,15 @@ def test_login_globale_limiet_over_ips(maak):
                     headers={"cf-connecting-ip": f"10.0.0.{i}"}).status_code for i in range(25)]
     assert codes[:20] == [401] * 20
     assert codes[20:] == [429] * 5
+
+
+def test_401_logt_reden_zonder_waarde(maak, caplog):
+    c = maak()
+    with caplog.at_level("INFO", logger="uvicorn.error.blueslab"):
+        c.get("/api/ik")
+        c.cookies.set("blueslab_sessie", "123.geheimewaarde")
+        c.get("/api/ik")
+    regels = [r.getMessage() for r in caplog.records if r.name == "uvicorn.error.blueslab"]
+    assert any("geen cookie" in r for r in regels)
+    assert any("ongeldige cookie" in r for r in regels)
+    assert not any("geheimewaarde" in r for r in regels)

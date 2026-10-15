@@ -5,6 +5,7 @@ Instellingen uit de omgeving (.env + .env.secrets): BLUESLAB_DATA, BLUESLAB_PASS
 BLUESLAB_SECRET, BLUESLAB_ANTHROPIC_API_KEY.
 """
 
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -25,6 +26,7 @@ from core.chords import parse_chord
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_PDF = 10 * 1024 * 1024
+log = logging.getLogger("uvicorn.error.blueslab")  # erft de handler van uvicorn → journal
 VOICE = {"bb": "bb_clarinet", "eb": "eb_alto_sax"}
 
 
@@ -175,8 +177,11 @@ def maak_app(instellingen: dict = None) -> FastAPI:
             lengte = request.headers.get("content-length", "")
             if lengte.isdigit() and int(lengte) > MAX_PDF + 1024 * 1024:
                 return JSONResponse({"detail": "Het verzoek is groter dan 10 MB."}, status_code=413)
-            if pad not in ("/api/login", "/api/logout") and not auth.sessie_geldig(
-                    request.cookies.get(auth.COOKIE, ""), secret):
+            cookie = request.cookies.get(auth.COOKIE, "")
+            if pad not in ("/api/login", "/api/logout") and not auth.sessie_geldig(cookie, secret):
+                # Alleen de reden loggen, nooit de waarde.
+                log.info("401 %s: %s", pad, "ongeldige cookie" if cookie else
+                         f"geen cookie (cookie-header: {'ja' if 'cookie' in request.headers else 'nee'})")
                 return JSONResponse({"detail": "Log eerst in."}, status_code=401)
         return await call_next(request)
 
