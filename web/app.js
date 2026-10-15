@@ -282,6 +282,31 @@ async function paginaControle() {
   tekenDelen();
 }
 
+// --- song.html: oefenen (fragment + meespelen) --------------------------------
+// iTunes-zoekresultaten -> de gekozen preview (index loopt rond), of null.
+function kiesFragment(resultaten, index) {
+  const met = (resultaten || []).filter(r => r.previewUrl).slice(0, 5);
+  if (!met.length) return null;
+  const i = ((index % met.length) + met.length) % met.length;
+  return { url: met[i].previewUrl, track: met[i].trackName, artiest: met[i].artistName,
+    index: i, aantal: met.length };
+}
+
+function fragmentZoekUrl(titel, artiest) {
+  const term = encodeURIComponent(`${titel} ${artiest || ""}`.trim());
+  return `https://itunes.apple.com/search?term=${term}&entity=song&country=NL&limit=10`;
+}
+
+// Welke maten de begeleiding speelt: vanaf de startmaat tot het eind, of (herhaal)
+// tot het eind van het deel van de startmaat, waarna dat hele deel herhaalt.
+function speelBereik(delen, start, herhaal) {
+  if (!delen.length) return { start: 1, eind: 0, lusStart: 1 };
+  const s = start === null ? delen[0].start_maat : start;
+  const d = herhaal && delen.find(x => s >= x.start_maat && s <= x.eind_maat);
+  if (d) return { start: s, eind: d.eind_maat, lusStart: d.start_maat };
+  return { start: s, eind: delen[delen.length - 1].eind_maat, lusStart: s };
+}
+
 // --- song.html: speelschema ---------------------------------------------------
 // Scherm aan houden tijdens het spelen (Safari 16.4+); stil negeren waar het niet kan.
 function houdSchermAan() {

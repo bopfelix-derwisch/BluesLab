@@ -106,3 +106,54 @@ def test_songpagina_rendert_en_houdt_scherm_aan():
     assert r["navigaties"] == []
     assert r["wakelock"] == 1
     assert r["nullKinderen"] == 0  # anders staat er letterlijk "null" op de pagina
+
+
+# --- Oefenen: pure helpers uit app.js ----------------------------------------
+
+def _itunes(n, zonder_preview=()):
+    return [{"trackName": f"Spooky {i}", "artistName": f"Artiest {i}",
+             **({} if i in zonder_preview else {"previewUrl": f"https://audio/{i}.m4a"})}
+            for i in range(n)]
+
+
+def test_kies_fragment_eerste_en_rondlopen():
+    r = _itunes(3)
+    assert js(f"kiesFragment({json.dumps(r)}, 0)") == {
+        "url": "https://audio/0.m4a", "track": "Spooky 0", "artiest": "Artiest 0", "index": 0, "aantal": 3}
+    assert js(f"kiesFragment({json.dumps(r)}, 4)")["index"] == 1
+
+
+def test_kies_fragment_slaat_zonder_preview_over_en_max_vijf():
+    r = _itunes(8, zonder_preview={0, 2})
+    f = js(f"kiesFragment({json.dumps(r)}, 0)")
+    assert (f["track"], f["aantal"]) == ("Spooky 1", 5)
+
+
+def test_kies_fragment_niets():
+    assert js("kiesFragment([], 0)") is None
+    assert js("kiesFragment(undefined, 0)") is None
+    assert js(f"kiesFragment({json.dumps(_itunes(2, zonder_preview={0, 1}))}, 0)") is None
+
+
+def test_fragment_zoek_url():
+    assert js('fragmentZoekUrl("Spooky", "Dusty Springfield")') == (
+        "https://itunes.apple.com/search?term=Spooky%20Dusty%20Springfield&entity=song&country=NL&limit=10")
+    assert js('fragmentZoekUrl("Crazy", "")').startswith("https://itunes.apple.com/search?term=Crazy&")
+
+
+DELEN = [{"start_maat": 1, "eind_maat": 8}, {"start_maat": 9, "eind_maat": 20},
+         {"start_maat": 21, "eind_maat": 24}]
+
+
+def test_speel_bereik_zonder_herhalen():
+    assert js(f"speelBereik({json.dumps(DELEN)}, null, false)") == {"start": 1, "eind": 24, "lusStart": 1}
+    assert js(f"speelBereik({json.dumps(DELEN)}, 12, false)") == {"start": 12, "eind": 24, "lusStart": 12}
+
+
+def test_speel_bereik_herhaalt_het_deel_van_de_startmaat():
+    assert js(f"speelBereik({json.dumps(DELEN)}, 12, true)") == {"start": 12, "eind": 20, "lusStart": 9}
+    assert js(f"speelBereik({json.dumps(DELEN)}, null, true)") == {"start": 1, "eind": 8, "lusStart": 1}
+
+
+def test_speel_bereik_zonder_delen():
+    assert js("speelBereik([], null, true)") == {"start": 1, "eind": 0, "lusStart": 1}
