@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -88,6 +89,13 @@ def bepaal_delen(claude, gelezen: dict, maten: list) -> list:
     for d in voorstel:
         deel_maten = maten[d["start_maat"] - 1:d["eind_maat"]]
         try:
+            key_for_section(deel_maten, vt)
+            zonder_akkoorden = False
+        except ValueError:
+            zonder_akkoorden = True
+        try:
+            if zonder_akkoorden:  # alleen N.C./leeg: Claude's toonsoort is dan een gok
+                raise ValueError
             key, bron = parse_key(d.get("toonsoort") or ""), "claude"
         except ValueError:
             key, bron = engine_key(deel_maten, vt), "engine"
@@ -143,6 +151,7 @@ def maak_app(instellingen: dict = None) -> FastAPI:
     db_pad = str(data_dir / "blueslab.sqlite")
 
     login_limiet = auth.RateLimiter(5, 60)
+    login_globaal = auth.RateLimiter(20, 60)  # één account: ook over alle IP's samen begrenzen
     claude_limiet = auth.RateLimiter(30, 3600)
 
     def conn_dep():
@@ -156,13 +165,26 @@ def maak_app(instellingen: dict = None) -> FastAPI:
         if not auth.sessie_geldig(request.cookies.get(auth.COOKIE, ""), secret):
             raise HTTPException(401, "Log eerst in.")
 
-    app = FastAPI(title="BluesLab")
+    app = FastAPI(title="BluesLab", docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.middleware("http")
+    async def poortwachter(request: Request, call_next):
+        # Vóór FastAPI de body leest: te grote verzoeken en niet-ingelogde API-aanroepen weigeren.
+        pad = request.url.path
+        if pad.startswith("/api/"):
+            lengte = request.headers.get("content-length", "")
+            if lengte.isdigit() and int(lengte) > MAX_PDF + 1024 * 1024:
+                return JSONResponse({"detail": "Het verzoek is groter dan 10 MB."}, status_code=413)
+            if pad not in ("/api/login", "/api/logout") and not auth.sessie_geldig(
+                    request.cookies.get(auth.COOKIE, ""), secret):
+                return JSONResponse({"detail": "Log eerst in."}, status_code=401)
+        return await call_next(request)
 
     @app.post("/api/login")
     def login(body: Login, request: Request, response: Response):
         ip = request.headers.get("cf-connecting-ip") or (
             request.client.host if request.client else "onbekend")
-        if not login_limiet.toegestaan(ip):
+        if not (login_limiet.toegestaan(ip) and login_globaal.toegestaan("alle")):
             raise HTTPException(429, "Te veel pogingen. Wacht een minuut.")
         if not auth.controleer_wachtwoord(body.wachtwoord, password_hash):
             raise HTTPException(401, "Onjuist wachtwoord.")

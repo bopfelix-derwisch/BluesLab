@@ -49,7 +49,8 @@ def sessie_geldig(cookie: str, secret: str, nu: float = None) -> bool:
     if not cookie or not secret:
         return False
     verloopt, _, handtekening = cookie.partition(".")
-    if not verloopt.isdigit():
+    # isascii: compare_digest geeft TypeError op niet-ASCII, en isdigit accepteert ook '²'.
+    if not (cookie.isascii() and verloopt.isdigit()):
         return False
     if not hmac.compare_digest(_teken(secret, verloopt), handtekening):
         return False
@@ -67,9 +68,14 @@ class RateLimiter:
     def toegestaan(self, sleutel: str, nu: float = None, aantal: int = 1) -> bool:
         """Registreert `aantal` treffers als dat binnen de limiet past; anders False."""
         nu = nu if nu is not None else time.monotonic()
+        # Verlopen treffers en lege sleutels opruimen, zodat het geheugen niet per IP groeit.
+        for k in list(self._treffers):
+            oud = self._treffers[k]
+            while oud and oud[0] <= nu - self.venster:
+                oud.popleft()
+            if not oud:
+                del self._treffers[k]
         q = self._treffers[sleutel]
-        while q and q[0] <= nu - self.venster:
-            q.popleft()
         if len(q) + aantal > self.maximum:
             return False
         q.extend([nu] * aantal)

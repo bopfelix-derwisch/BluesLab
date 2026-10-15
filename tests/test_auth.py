@@ -44,3 +44,18 @@ def test_rate_limiter_aantal():
     assert all(rl.toegestaan("claude", nu=0, aantal=2) for _ in range(15))
     assert not rl.toegestaan("claude", nu=1, aantal=2)
     assert not rl.toegestaan("claude", nu=1, aantal=1)
+
+
+def test_sessie_niet_ascii_geeft_false():
+    from app.auth import sessie_geldig
+    assert sessie_geldig("123.é", "geheim") is False
+    assert sessie_geldig("²." + "a" * 64, "geheim") is False
+
+
+def test_ratelimiter_ruimt_lege_sleutels_op():
+    from app.auth import RateLimiter
+    rl = RateLimiter(5, 60)
+    for i in range(100):
+        rl.toegestaan(f"ip{i}", nu=0)
+    rl.toegestaan("nieuw", nu=1000)
+    assert len(rl._treffers) == 1

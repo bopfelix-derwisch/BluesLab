@@ -290,3 +290,41 @@ def test_upload_deel_met_alleen_nc(maak):
     assert s["delen"][0]["concert_key"] == "Db" and s["delen"][0]["key_source"] == "engine"
     schema = c.get(f"/api/songs/{sid}/schema").json()
     assert schema["delen"][0]["maten"][0]["doeltoon"] is None
+
+
+# --- review-fixes (Final review BL-2) ---------------------------------------
+
+def test_zonder_login_body_niet_gelezen(maak):
+    # Login wordt gecontroleerd vóór de body geparsed wordt: 401, geen 422.
+    c = maak()
+    r = c.post("/api/setlists", content=b"{kapot", headers={"content-type": "application/json"})
+    assert r.status_code == 401
+    assert _upload(c, 1).status_code == 401
+
+
+def test_te_groot_verzoek_413_voor_body(maak):
+    c = _login(maak())
+    r = c.post("/api/setlists/1/songs", content=b"x",
+               headers={"content-type": "application/pdf", "content-length": str(12 * 1024 * 1024)})
+    assert r.status_code == 413
+
+
+def test_upload_nc_deel_negeert_claude_toonsoort(maak):
+    gelezen = dict(GELEZEN, regels=[{"start_maat": 1, "maten": [["N.C."], ["N.C."]]},
+                                    {"start_maat": 3, "maten": [["Bbm"], ["Gb"]]}])
+    delen = [{"naam": "Intro", "start_maat": 1, "eind_maat": 2, "toonsoort": "Bbm",
+              "solo_geschikt": False, "reden": "Stilte."},
+             {"naam": "Couplet", "start_maat": 3, "eind_maat": 4, "toonsoort": "Bbm",
+              "solo_geschikt": False, "reden": "x"}]
+    c = _login(maak(NepClaude(gelezen=gelezen, delen=delen)))
+    sid = _upload(c, _setlist(c)).json()["id"]
+    d = c.get(f"/api/songs/{sid}").json()["delen"][0]
+    assert d["concert_key"] == "Db" and d["key_source"] == "engine"
+
+
+def test_login_globale_limiet_over_ips(maak):
+    c = maak()
+    codes = [c.post("/api/login", json={"wachtwoord": "fout"},
+                    headers={"cf-connecting-ip": f"10.0.0.{i}"}).status_code for i in range(25)]
+    assert codes[:20] == [401] * 20
+    assert codes[20:] == [429] * 5
