@@ -8,9 +8,12 @@ de akkoordtonen toont — **getransponeerd naar de geschreven notatie** voor
 
 ```text
 BluesLab/
-  core/theory.py   # pure logica (stdlib + argparse) — BL-1
-  docs/            # stories / specs
-  tests/           # optioneel; minimale eis is --selftest in theory.py
+  core/            # stdlib-engine: theory.py (BL-1), chords.py, analysis.py (BL-2)
+  app/             # FastAPI: auth, db (SQLite), claude (PDF lezen), main (API)
+  web/             # vanilla HTML/JS, geen build-stap
+  deploy/          # blueslab.service (systemd)
+  docs/            # stories / specs / plannen
+  tests/           # pytest; fixtures/chordify-crazy.pdf + golden crazy-regels.json
 ```
 
 ## Gebruik (BL-1)
@@ -42,3 +45,27 @@ diatonische ladder elke letter precies één keer.
 > de lead-sheet-spelling (`C°7 = C Eb Gb A`, niet de strikte dubbelmol `Bbb`), en
 > de zeldzame trap die anders een dubbel voorteken zou vragen (bv. b5 van Ab)
 > wordt enharmonisch met één voorteken herspeld.
+
+## Site (BL-2) — https://blues.felixisfelix.com
+
+Upload een Chordify-PDF, controleer de gelezen maten en krijg per maat een speelschema
+(geschreven akkoord, akkoordtonen, doeltoon) voor Bes klarinet of alt sax.
+
+```bash
+# Eenmalig
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+
+# Testen (live-test wordt overgeslagen)
+.venv/bin/python -m pytest
+# Live-test tegen de Claude-API (één aanroep)
+set -a; . ./.env.secrets; set +a; BLUESLAB_LIVE=1 .venv/bin/python -m pytest tests/test_live.py -s
+
+# Dienst (poort 8796, alleen 127.0.0.1; publiek via de cloudflared-tunnel)
+sudo systemctl restart blueslab.service
+journalctl -u blueslab.service -f
+```
+
+**Secrets** komen uit labs-secrets, profiel `blueslab` → `.env.secrets` (niet in git), zie
+`.env.example`. Nieuw wachtwoord: `.venv/bin/python -m app.auth` in een echte terminal
+(getpass), en de hash opslaan als `BLUESLAB_PASSWORD_HASH`; daarna
+`labsctl render blueslab` en de dienst herstarten.

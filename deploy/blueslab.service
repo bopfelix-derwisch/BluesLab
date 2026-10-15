@@ -1,0 +1,16 @@
+[Unit]
+Description=BluesLab site (blues.felixisfelix.com, poort 8796)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bob
+WorkingDirectory=/home/bob/BluesLab
+EnvironmentFile=/home/bob/BluesLab/.env.secrets
+ExecStart=/home/bob/BluesLab/.venv/bin/uvicorn app.main:maak_app --factory --host 127.0.0.1 --port 8796
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
