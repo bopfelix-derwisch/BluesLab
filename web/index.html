@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BluesLab</title>
   <link rel="stylesheet" href="style.css?v=2">
-  <script src="app.js?v=2" defer></script>
+  <script src="app.js?v=3" defer></script>
 </head>
 <body data-pagina="index">
   <main>
     <h1>BluesLab</h1>
     <p id="fout" class="foutvak" hidden></p>
     <section id="login" hidden>
-      <form id="login-form">
+      <form id="login-form" method="post" action="/login">
         <label for="wachtwoord">Wachtwoord</label>
-        <input id="wachtwoord" type="password" autocomplete="current-password" required>
+        <input id="wachtwoord" name="wachtwoord" type="password" autocomplete="current-password" required>
         <button type="submit">Inloggen</button>
       </form>
     </section>

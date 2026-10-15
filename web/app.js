@@ -80,14 +80,10 @@ async function paginaIndex() {
   try {
     await api("/api/ik");
   } catch {
+    // Het formulier post zelf naar /login (geen fetch: iOS Safari bewaarde die cookie niet).
     login.hidden = false;
-    $("#login-form").addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      try {
-        await api("/api/login", { json: { wachtwoord: $("#wachtwoord").value } });
-        location.reload();
-      } catch (e) { toonFout(e.message); }
-    });
+    const fouten = { wachtwoord: "Onjuist wachtwoord.", limiet: "Te veel pogingen. Wacht een minuut." };
+    if (fouten[param("fout")]) toonFout(fouten[param("fout")]);
     return;
   }
   lijst.hidden = false;

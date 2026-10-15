@@ -11,8 +11,8 @@ import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -189,17 +189,38 @@ def maak_app(instellingen: dict = None) -> FastAPI:
                 return JSONResponse({"detail": "Log eerst in."}, status_code=401)
         return await call_next(request)
 
-    @app.post("/api/login")
-    def login(body: Login, request: Request, response: Response):
+    def probeer_login(request: Request, wachtwoord: str) -> Optional[str]:
+        """None bij succes, anders 'limiet' of 'wachtwoord'."""
         ip = request.headers.get("cf-connecting-ip") or (
             request.client.host if request.client else "onbekend")
         if not (login_limiet.toegestaan(ip) and login_globaal.toegestaan("alle")):
-            raise HTTPException(429, "Te veel pogingen. Wacht een minuut.")
-        if not auth.controleer_wachtwoord(body.wachtwoord, password_hash):
-            raise HTTPException(401, "Onjuist wachtwoord.")
+            return "limiet"
+        if not auth.controleer_wachtwoord(wachtwoord, password_hash):
+            return "wachtwoord"
+        return None
+
+    def zet_sessie(response: Response):
         response.set_cookie(auth.COOKIE, auth.maak_sessie(secret), max_age=auth.SESSIE_DUUR,
                             httponly=True, secure=True, samesite="lax")
+
+    @app.post("/api/login")
+    def login(body: Login, request: Request, response: Response):
+        fout = probeer_login(request, body.wachtwoord)
+        if fout == "limiet":
+            raise HTTPException(429, "Te veel pogingen. Wacht een minuut.")
+        if fout:
+            raise HTTPException(401, "Onjuist wachtwoord.")
+        zet_sessie(response)
         return {"ok": True}
+
+    @app.post("/login")
+    def login_formulier(request: Request, wachtwoord: str = Form(...)):
+        # Gewone formulier-POST + 303: iOS Safari bewaarde de cookie uit een fetch()-antwoord niet.
+        fout = probeer_login(request, wachtwoord)
+        response = RedirectResponse(f"/?fout={fout}" if fout else "/", status_code=303)
+        if not fout:
+            zet_sessie(response)
+        return response
 
     @app.get("/api/cookietest")
     def cookietest(request: Request, response: Response):

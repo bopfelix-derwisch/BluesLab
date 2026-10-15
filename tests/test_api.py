@@ -348,3 +348,21 @@ def test_cookietest_zet_varianten_en_meldt_terug(maak):
     assert r1.status_code == 200
     r2 = c.get("/api/cookietest")
     assert "t_zoals_login" in r2.json()["terug"]
+
+
+def test_formulier_login_zet_cookie_en_stuurt_door(maak):
+    c = maak()
+    r = c.post("/login", data={"wachtwoord": WACHTWOORD}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert "blueslab_sessie=" in r.headers["set-cookie"] and "Secure" in r.headers["set-cookie"]
+    assert c.get("/api/ik").status_code == 200
+
+
+def test_formulier_login_fout_en_limiet(maak):
+    c = maak()
+    r = c.post("/login", data={"wachtwoord": "fout"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/?fout=wachtwoord"
+    assert "set-cookie" not in r.headers
+    for _ in range(5):
+        r = c.post("/login", data={"wachtwoord": "fout"}, follow_redirects=False)
+    assert r.headers["location"] == "/?fout=limiet"
