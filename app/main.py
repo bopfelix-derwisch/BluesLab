@@ -66,6 +66,10 @@ class Controle(BaseModel):
     delen: list[Deel]
 
 
+class Stijl(BaseModel):
+    stijl: Literal["shuffle", "pop", "ballad", "funk"]
+
+
 def engine_key(maten: list, voortekening: int) -> dict:
     """Toonsoort volgens de engine; zonder akkoorden de majeur van de voortekening."""
     try:
@@ -326,6 +330,12 @@ def maak_app(instellingen: dict = None) -> FastAPI:
         Path(pad).unlink(missing_ok=True)
         return {"ok": True}
 
+    @api.put("/songs/{song_id}/stijl")
+    def zet_stijl(song_id: int, body: Stijl, conn=Depends(conn_dep)):
+        if not db.zet_stijl(conn, song_id, body.stijl):
+            raise HTTPException(404, "Nummer niet gevonden.")
+        return {"ok": True}
+
     @api.get("/songs/{song_id}/schema")
     def schema(song_id: int, instrument: Literal["bb", "eb"] = "bb", conn=Depends(conn_dep)):
         s = db.song(conn, song_id)
@@ -337,6 +347,7 @@ def maak_app(instellingen: dict = None) -> FastAPI:
             "id": s["id"], "setlist_id": s["setlist_id"],
             "titel": s["titel"], "artiest": s["artiest"], "tempo": s["tempo"],
             "maatsoort": s["maatsoort"], "status": s["status"], "instrument": instrument,
+            "stijl": s["stijl"],
             "concert_key": delen[0]["concert_key"] if delen else None,
             "geschreven_key": delen[0]["geschreven_key"] if delen else None,
             "delen": delen,

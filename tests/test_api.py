@@ -370,3 +370,30 @@ def test_schema_bevat_setlist_id(maak):
     sl = _setlist(c)
     sid = _upload(c, sl).json()["id"]
     assert c.get(f"/api/songs/{sid}/schema").json()["setlist_id"] == sl
+
+
+def test_stijl_per_nummer(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "shuffle"
+    assert c.put(f"/api/songs/{sid}/stijl", json={"stijl": "pop"}).json() == {"ok": True}
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "pop"
+    assert c.put(f"/api/songs/{sid}/stijl", json={"stijl": "jazz"}).status_code == 422
+    assert c.put("/api/songs/999/stijl", json={"stijl": "pop"}).status_code == 404
+
+
+def test_stijl_zonder_login_401(maak):
+    assert maak().put("/api/songs/1/stijl", json={"stijl": "pop"}).status_code == 401
+
+
+def test_controleren_laat_stijl_staan(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    c.put(f"/api/songs/{sid}/stijl", json={"stijl": "ballad"})
+    s = c.get(f"/api/songs/{sid}").json()
+    body = {"titel": "Crazy", "artiest": "Lost Frequencies", "tempo": 103, "voortekening": -5,
+            "regels": s["regels"],
+            "delen": [{"naam": "Couplet", "start_maat": 1, "eind_maat": 8, "concert_key": "Bbm",
+                       "key_source": "claude", "solo_geschikt": True}]}
+    assert c.put(f"/api/songs/{sid}", json=body).status_code == 200
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "ballad"

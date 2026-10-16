@@ -66,3 +66,38 @@ def test_unicode_akkoorden_bewaard(conn):
     sid = db.maak_song(conn, sl, "/x.pdf", KOP, [{"start_maat": 1, "maten": [["B♭m"]]}],
                        [dict(DELEN[0], eind_maat=1)])
     assert db.song(conn, sid)["regels"][0]["maten"] == [["B♭m"]]
+
+
+OUD_SONG = """CREATE TABLE song (
+    id INTEGER PRIMARY KEY, setlist_id INTEGER NOT NULL, positie INTEGER NOT NULL,
+    titel TEXT NOT NULL, artiest TEXT NOT NULL DEFAULT '', pdf_path TEXT NOT NULL, tempo INTEGER,
+    maatsoort TEXT NOT NULL DEFAULT '4/4', voortekening INTEGER NOT NULL DEFAULT 0,
+    regelstarts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'gelezen')"""
+
+
+def test_migratie_voegt_stijl_toe_aan_oude_database(tmp_path):
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute("CREATE TABLE setlist (id INTEGER PRIMARY KEY, naam TEXT NOT NULL,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    oud.execute(OUD_SONG)
+    oud.execute("INSERT INTO setlist (id, naam) VALUES (1, 'Next week')")
+    oud.execute("INSERT INTO song (id, setlist_id, positie, titel, pdf_path, tempo)"
+                " VALUES (1, 1, 1, 'Spooky', '/x.pdf', 107)")
+    oud.commit()
+    oud.close()
+    c = db.verbind(pad)
+    s = db.song(c, 1)
+    assert (s["titel"], s["tempo"], s["stijl"]) == ("Spooky", 107, "shuffle")
+    c.close()
+    db.verbind(pad).close()  # tweede start: kolom bestaat al, geen fout
+
+
+def test_zet_stijl(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    assert db.song(conn, sid)["stijl"] == "shuffle"
+    assert db.zet_stijl(conn, sid, "funk") is True
+    assert db.song(conn, sid)["stijl"] == "funk"
+    assert db.zet_stijl(conn, 999, "pop") is False

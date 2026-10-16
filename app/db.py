@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS song (
     maatsoort TEXT NOT NULL DEFAULT '4/4',
     voortekening INTEGER NOT NULL DEFAULT 0,
     regelstarts TEXT NOT NULL DEFAULT '[]',
-    status TEXT NOT NULL DEFAULT 'gelezen'
+    status TEXT NOT NULL DEFAULT 'gelezen',
+    stijl TEXT NOT NULL DEFAULT 'shuffle'
 );
 CREATE TABLE IF NOT EXISTS bar (
     song_id INTEGER NOT NULL REFERENCES song(id) ON DELETE CASCADE,
@@ -51,6 +52,10 @@ def verbind(pad: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    # Oudere database: kolom stijl bestond nog niet (CREATE TABLE IF NOT EXISTS voegt hem niet toe).
+    if "stijl" not in {r["name"] for r in conn.execute("PRAGMA table_info(song)")}:
+        with conn:
+            conn.execute("ALTER TABLE song ADD COLUMN stijl TEXT NOT NULL DEFAULT 'shuffle'")
     return conn
 
 
@@ -138,6 +143,12 @@ def song(conn, song_id: int):
                               (song_id,))
     ]
     return s
+
+
+def zet_stijl(conn, song_id: int, stijl: str) -> bool:
+    """Begeleidingsstijl van een nummer; False als het nummer niet bestaat."""
+    with conn:
+        return conn.execute("UPDATE song SET stijl = ? WHERE id = ?", (stijl, song_id)).rowcount > 0
 
 
 def songs(conn, setlist_id: int) -> list:
