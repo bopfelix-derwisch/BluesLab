@@ -15,11 +15,11 @@ let nullKinderen = 0;  // "selector:event" voor elke addEventListener op een ele
 let maatvakken = 0;   // elementen met data-nr (aan te tikken maatvakken)
 const fetches = [];
 const wacht = ms => new Promise(r => setTimeout(r, ms));
-// BLUESLAB_PIANO: ok (standaard) | fout (404) | traag (30 ms) | hangt (nooit klaar).
-const pianoStand = process.env.BLUESLAB_PIANO || "ok";
+// BLUESLAB_PIANO: ok (standaard) | fout (404) | traag (30 ms) | traag:<ms> | hangt (nooit klaar).
+const [pianoStand, pianoMs] = (process.env.BLUESLAB_PIANO || "ok").split(":");
 const pianoAntwoord = async () => {
   if (pianoStand === "hangt") return new Promise(() => {});
-  if (pianoStand === "traag") await wacht(30);
+  if (pianoStand === "traag") await wacht(Number(pianoMs || 30));
   const ok = pianoStand !== "fout";
   return { ok, status: ok ? 200 : 404, arrayBuffer: async () => new ArrayBuffer(8) };
 };
@@ -56,7 +56,7 @@ const ctx = {
     visibilityState: process.env.BLUESLAB_VERBORGEN === "1" ? "hidden" : "visible",
     querySelector: nepElement,
     createElement: () => { const e = nepElement(Symbol("el")); gemaakt.push(e); return e; },
-    addEventListener: (t, f) => { luisteraars[t] = f; },
+    addEventListener: (t, f) => { (luisteraars[t] = luisteraars[t] || []).push(f); },
   },
   location: {
     search: zoek,
@@ -95,15 +95,23 @@ vm.createContext(ctx);
 for (const f of ["speler.js", "app.js"]) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "web", f), "utf8"), ctx);
 }
-luisteraars.DOMContentLoaded();
+luisteraars.DOMContentLoaded.forEach(f => f());
 // Optioneel: BLUESLAB_ACTIES = JSON ["data-nr=3", "tekst=▶ Speel", ...]: klik na het laden
 // op het laatst gemaakte element met dat attribuut of die tekst.
+// "zicht=hidden|visible" zet document.visibilityState en vuurt visibilitychange; "wacht=<ms>" wacht.
 const acties = JSON.parse(process.env.BLUESLAB_ACTIES || "[]");
 const inKlik = [];  // resume-aanroepen synchroon binnen elke klik
 (async () => {
   await wacht(50);
   for (const a of acties) {
     const [k, v] = a.split("=");
+    if (k === "wacht") { await wacht(Number(v)); continue; }
+    if (k === "zicht") {
+      ctx.document.visibilityState = v;
+      (luisteraars.visibilitychange || []).forEach(f => f());
+      await wacht(20);
+      continue;
+    }
     const doel = gemaakt.filter(e => (k === "tekst" ? e._tekst === v : String(e._attrs[k]) === v)).pop();
     if (!doel || !doel._on.click) throw new Error(`niets om te klikken: ${a}`);
     const voor = resumes;

@@ -415,6 +415,9 @@ async function paginaSong() {
   const speler = kanSpelen() ? new Speler({ opMaat: zetCursor, opKlaar: () => tekenSpeler() }) : null;
   // Piano: één laadpoging per pagina (nieuw → laden → klaar of mislukt).
   let piano = "nieuw";
+  // Weg geweest tijdens het laden: daarna niet alsnog starten. iOS bevriest JS op de
+  // achtergrond, dus het laden is vaak pas klaar als de pagina alweer zichtbaar is.
+  let wegTijdensLaden = false;
 
   function markeerStart() {
     const oud = $(".maatvak.start");
@@ -437,6 +440,7 @@ async function paginaSong() {
     const ctx = speler.ontgrendel();  // binnen de tik, vóór de await (iOS)
     if (piano === "nieuw") {
       piano = "laden";
+      wegTijdensLaden = false;
       tekenSpeler();
       try {
         speler.geluid = pianoGeluid(await binnen(laadPiano(ctx), 10000));
@@ -445,7 +449,7 @@ async function paginaSong() {
         piano = "mislukt";
         $("#hulp").textContent = "Piano niet geladen — eenvoudige klank. Tik op een maat om daar te beginnen.";
       }
-      if (document.visibilityState === "hidden") { tekenSpeler(); return; }
+      if (wegTijdensLaden || document.visibilityState === "hidden") { tekenSpeler(); return; }
     }
     speel();
   }
@@ -494,7 +498,9 @@ async function paginaSong() {
         $("#speler").hidden = false;
         $("#hulp").hidden = false;
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "hidden") speler.stop();
+          if (document.visibilityState !== "hidden") return;
+          speler.stop();
+          if (piano === "laden") wegTijdensLaden = true;
         });
       }
     }

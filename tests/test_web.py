@@ -278,3 +278,10 @@ def test_pagina_verborgen_tijdens_laden_niet_starten():
 def test_hulptekst_noemt_salamander_piano():
     html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
     assert "Salamander Grand Piano" in html and "CC-BY 3.0" in html
+
+
+def test_weg_en_terug_tijdens_laden_niet_alsnog_starten():
+    # iOS bevriest JS op de achtergrond: het laden is pas klaar als Bob terug is (zichtbaar).
+    r = _speel("tekst=▶ Speel", "zicht=hidden", "zicht=visible", "wacht=100", BLUESLAB_PIANO="traag:80")
+    assert r["starts"] == 0
+    assert r["speelknop"]["tekst"] == "▶ Speel"
