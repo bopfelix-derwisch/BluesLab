@@ -31,7 +31,16 @@ def js(expressie):
     ("Cmaj7", 36, [60, 64, 67, 71]),
 ])
 def test_akkoord_midi(tekst, bas, akkoord):
-    assert js(f"akkoordMidi({json.dumps(tekst)})") == {"nc": False, "bas": bas, "akkoord": akkoord}
+    r = js(f"akkoordMidi({json.dumps(tekst)})")
+    assert {k: r[k] for k in ("nc", "bas", "akkoord")} == {"nc": False, "bas": bas, "akkoord": akkoord}
+
+
+@pytest.mark.parametrize("tekst, grond, kwint, slash", [
+    ("G7", 43, 7, False), ("Bdim", 47, 6, False), ("Caug", 36, 8, False),
+    ("Gsus4", 43, 7, False), ("Bbm7/F", 46, 7, True)])
+def test_akkoord_midi_grond_kwint_slash(tekst, grond, kwint, slash):
+    r = js(f"akkoordMidi({json.dumps(tekst)})")
+    assert (r["grond"], r["kwint"], r["slash"]) == (grond, kwint, slash)
 
 
 @pytest.mark.parametrize("tekst", ["N.C.", "NC", "n.c."])
@@ -115,6 +124,57 @@ def test_speelplan_start_en_eind():
 def test_speelplan_zonder_maten():
     g, duur = plan([], {"bpm": 120, "inteltel": 0})
     assert (g, duur) == ([], 0)
+
+
+SHUF = {"bpm": 100, "inteltel": 0, "stijl": "shuffle"}  # tel 600 ms, korte achtste op 400 ms
+
+
+def test_shuffle_een_akkoord_kwint_sext_septiem_sext():
+    g, duur = plan(_maten("C"), SHUF)
+    assert g == [
+        [0, "tik", [], 1], [0, "bas", [36, 43], 1], [400, "bas", [36, 43], 1],
+        [600, "tik", [], 1], [600, "bas", [36, 45], 1], [600, "akkoord", [60, 64, 67], 1],
+        [1000, "bas", [36, 45], 1],
+        [1200, "tik", [], 1], [1200, "bas", [36, 46], 1], [1600, "bas", [36, 46], 1],
+        [1800, "tik", [], 1], [1800, "bas", [36, 45], 1], [1800, "akkoord", [60, 64, 67], 1],
+        [2200, "bas", [36, 45], 1]]
+    assert duur == 2400
+
+
+def test_shuffle_twee_akkoorden_elk_kwint_sext():
+    g, _ = plan(_maten("C G"), SHUF)
+    assert [x[2] for x in g if x[1] == "bas"][::2] == [[36, 43], [36, 45], [43, 50], [43, 52]]
+    assert [x[:3] for x in g if x[1] == "akkoord"] == [[600, "akkoord", [60, 64, 67]],
+                                                       [1800, "akkoord", [55, 59, 62]]]
+
+
+def test_shuffle_slash_alleen_basnoot():
+    g, _ = plan(_maten("Bbm7/F"), SHUF)
+    assert {tuple(x[2]) for x in g if x[1] == "bas"} == {(41,)}
+
+
+def test_shuffle_dim_en_aug_alleen_eigen_kwint():
+    g, _ = plan(_maten("Bdim", "Caug"), SHUF)
+    assert {tuple(x[2]) for x in g if x[1] == "bas" and x[3] == 1} == {(47, 53)}
+    assert {tuple(x[2]) for x in g if x[1] == "bas" and x[3] == 2} == {(36, 44)}
+
+
+def test_shuffle_nc_alleen_tik():
+    g, _ = plan(_maten("N.C.", ""), SHUF)
+    assert {x[1] for x in g} == {"tik"}
+
+
+def test_shuffle_niet_bij_drie_kwart():
+    opties = {"bpm": 120, "tellen": 3}
+    assert plan(_maten("C"), dict(opties, stijl="shuffle")) == plan(_maten("C"), opties)
+
+
+def test_shuffle_gesorteerd_op_tijd_met_inteltel():
+    # Speler.vooruit plant op volgorde: een gebeurtenis die te vroeg in de lijst staat geeft een gat.
+    g, duur = plan(_maten("C F G", "Bbm7/F", "N.C.", "C"), {"bpm": 100, "stijl": "shuffle"})
+    tijden = [x[0] for x in g]
+    assert tijden == sorted(tijden)
+    assert duur == 12000  # inteltel + 4 maten van 2,4 s
 
 
 NEP = ("(() => { const log = []; let klaar = 0; const ctx = {currentTime: 0, resume() {},"

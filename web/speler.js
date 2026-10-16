@@ -60,7 +60,8 @@ function akkoordMidi(tekst) {
   const stappen = kwaliteit === "dim" && extensie === "7" ? [0, 3, 6, 9]
     : DRIEKLANK[kwaliteit].concat(EXTENSIE[extensie]);
   const laag = 52 + ((grond[0] - 4 + 12) % 12);  // grondtoon tussen E3 (52) en E♭4 (63)
-  return { nc: false, bas: 36 + basPc, akkoord: stappen.map(s => laag + s) };
+  return { nc: false, bas: 36 + basPc, akkoord: stappen.map(s => laag + s),
+    grond: 36 + grond[0], kwint: stappen[2], slash: slash >= 0 };
 }
 
 // "3/4" -> 3; leeg of onzin -> 4.
@@ -71,11 +72,28 @@ function tellenUit(maatsoort) {
 
 const TIK_DUUR = 0.03;
 
+// Shuffle-linkerhand: bovenop de grondtoon kwint, sext, kleine septiem, sext (+0, +2, +3, +2 op de kwint).
+const SHUFFLE = [0, 2, 3, 2];
+
+// Eén tel shuffle: linkerhand op de lange en de korte achtste, akkoord op tel 2 en 4.
+// p = tel sinds het akkoord begon, b = tel in de maat. Op tijd gesorteerd.
+function shuffleTel(a, t, tel, p, b, maat) {
+  const links = a.slash ? [a.bas]
+    : [a.grond, a.grond + a.kwint + (a.kwint === 7 ? SHUFFLE[p % 4] : 0)];
+  const g = [{ t, soort: "bas", midi: links, duur: 0.9 * tel * 2 / 3, maat }];
+  if (b % 2 === 1) g.push({ t, soort: "akkoord", midi: a.akkoord, duur: 0.25 * tel, maat });
+  g.push({ t: t + tel * 2 / 3, soort: "bas", midi: links, duur: 0.9 * tel / 3, maat });
+  return g;
+}
+
 // Schema-maten -> {gebeurtenissen: [{t, soort, midi, duur, maat}], duur} in seconden.
 // start/eind: maatnummers (inclusief). inteltel: tikken vooraf (maat null).
-// Per tel een tik; bas op de eerste tel van elk akkoord (en op even tellen), anders het akkoord.
-function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity, inteltel = tellen }) {
+// Recht: per tel een tik; bas op de eerste tel van elk akkoord (en op even tellen), anders het akkoord.
+// Shuffle (alleen bij 4 tellen): tik per tel, linkerhand in zwingende achtsten, akkoord op 2 en 4.
+function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity, inteltel = tellen,
+  stijl = "recht" }) {
   const tel = 60 / bpm;
+  const shuffle = stijl === "shuffle" && tellen === 4;
   const g = [];
   for (let i = 0; i < inteltel; i++) g.push({ t: i * tel, soort: "tik", midi: [], duur: TIK_DUUR, maat: null });
   const gekozen = maten.filter(m => m.nr >= start && m.nr <= eind);
@@ -91,6 +109,10 @@ function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity,
       const a = akk[k];
       if (!a || a.nc) continue;
       const eerste = b === Math.ceil(k * tellen / n);
+      if (shuffle) {
+        g.push(...shuffleTel(a, t, tel, b - Math.ceil(k * tellen / n), b, m.nr));
+        continue;
+      }
       if (eerste || (tellen % 2 === 0 && b % 2 === 0)) {
         g.push({ t, soort: "bas", midi: [a.bas], duur: 0.9 * tel, maat: m.nr });
       } else {
