@@ -213,12 +213,18 @@ class Speler {
     this.wekkers = [];
   }
 
-  start(plan, herhaal = null) {
-    this.stop();
+  // iOS: audio mag alleen binnen een tik aan. Roep dit aan vóór elke await.
+  ontgrendel() {
     // Afspelen als media: anders dempt de stille modus van iPad/iPhone de begeleiding.
     if (typeof navigator !== "undefined" && navigator.audioSession) navigator.audioSession.type = "playback";
     if (!this.ctx) this.ctx = this.maakContext();
-    if (this.ctx.resume) this.ctx.resume();  // iOS: mag alleen binnen een tik
+    if (this.ctx.resume) this.ctx.resume();
+    return this.ctx;
+  }
+
+  start(plan, herhaal = null) {
+    this.stop();
+    this.ontgrendel();
     // Eigen hoofdvolume per keer spelen, zodat Stop ook al geplande tonen dempt.
     this.uit = this.ctx.createGain();
     this.uit.connect(this.ctx.destination);

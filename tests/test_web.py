@@ -13,9 +13,10 @@ HARNAS = Path(__file__).parent / "web_harness.js"
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node ontbreekt")
 
 
-def draai(pagina, ik_status, zoek="", fixtures=None, audio=False, acties=()):
+def draai(pagina, ik_status, zoek="", fixtures=None, audio=False, acties=(), env=None):
     env = dict(os.environ, BLUESLAB_FIXTURES=json.dumps(fixtures or {}),
-               BLUESLAB_AUDIO="1" if audio else "0", BLUESLAB_ACTIES=json.dumps(list(acties)))
+               BLUESLAB_AUDIO="1" if audio else "0", BLUESLAB_ACTIES=json.dumps(list(acties)),
+               **(env or {}))
     uit = subprocess.run(["node", str(HARNAS), pagina, str(ik_status), zoek],
                          capture_output=True, text=True, check=True, timeout=20, env=env)
     return json.loads(uit.stdout.strip().splitlines()[-1])
@@ -198,9 +199,9 @@ def test_kies_fragment_exacte_titel_eerst():
     assert js(f"kiesFragment({json.dumps(r)}, 0, 'Crazy')")["url"] == "origineel"
 
 
-def _speel(*acties):
+def _speel(*acties, **env):
     return draai("song", 200, "?id=1", {"/api/songs/": SCHEMA, "/api/setlists/": SETLIST},
-                 audio=True, acties=acties)
+                 audio=True, acties=acties, env=env)
 
 
 def test_tik_op_maat_tijdens_spelen_start_daar_opnieuw():
@@ -223,3 +224,57 @@ def test_ander_fragment_knop_is_groot_genoeg():
     css = (Path(__file__).parent.parent / "web" / "style.css").read_text()
     regel = re.search(r"\.fragment button\.stil\s*\{([^}]*)\}", css)
     assert regel and "min-height: 44px" in regel.group(1)
+
+
+# --- Meespelen met piano --------------------------------------------------------
+
+def _piano_fetches(r):
+    return [f for f in r["fetches"] if f.startswith("piano/")]
+
+
+def test_eerste_speel_laadt_piano_en_start():
+    r = _speel("tekst=▶ Speel")
+    assert len(_piano_fetches(r)) == 15
+    assert r["starts"] == 1
+    assert r["speelknop"] == {"tekst": "■ Stop", "uit": False}
+    assert r["hulp"] == ""
+
+
+def test_audio_ontgrendeld_binnen_de_tik():
+    # iOS: audio mag alleen synchroon binnen de tik aan, niet pas na het laden.
+    assert _speel("tekst=▶ Speel", BLUESLAB_PIANO="hangt")["inKlik"] == [1]
+
+
+def test_tijdens_laden_knop_uit_en_geen_start():
+    r = _speel("tekst=▶ Speel", BLUESLAB_PIANO="hangt")
+    assert r["speelknop"] == {"tekst": "Piano laden…", "uit": True}
+    assert r["starts"] == 0
+
+
+def test_dubbel_tikken_tijdens_laden_een_keer_laden_en_starten():
+    r = _speel("tekst=▶ Speel", "tekst=▶ Speel", BLUESLAB_PIANO="traag")
+    assert len(_piano_fetches(r)) == 15
+    assert r["starts"] == 1
+
+
+def test_piano_mislukt_speelt_eenvoudige_klank_en_meldt():
+    r = _speel("tekst=▶ Speel", BLUESLAB_PIANO="fout")
+    assert r["starts"] == 1
+    assert "Piano niet geladen" in r["hulp"]
+
+
+def test_piano_mislukt_niet_opnieuw_laden():
+    r = _speel("tekst=▶ Speel", "tekst=■ Stop", "tekst=▶ Speel", BLUESLAB_PIANO="fout")
+    assert len(_piano_fetches(r)) == 15
+    assert r["starts"] == 2
+
+
+def test_pagina_verborgen_tijdens_laden_niet_starten():
+    r = _speel("tekst=▶ Speel", BLUESLAB_VERBORGEN="1")
+    assert r["starts"] == 0
+    assert r["speelknop"]["tekst"] == "▶ Speel"
+
+
+def test_hulptekst_noemt_salamander_piano():
+    html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
+    assert "Salamander Grand Piano" in html and "CC-BY 3.0" in html

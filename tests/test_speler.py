@@ -213,6 +213,13 @@ def test_speler_stop_meldt_een_keer():
     assert r == 1
 
 
+def test_ontgrendel_maakt_context_een_keer_en_hervat():
+    r = js("(() => { let gemaakt = 0, hervat = 0; const ctx = {resume() { hervat += 1; }};"
+           " const s = new Speler({maakContext: () => { gemaakt += 1; return ctx; }});"
+           " const a = s.ontgrendel(); s.ontgrendel(); return {zelfde: a === ctx, gemaakt, hervat}; })()")
+    assert r == {"zelfde": True, "gemaakt": 1, "hervat": 2}
+
+
 def test_kan_spelen_zonder_web_audio():
     assert js("kanSpelen()") is False
 

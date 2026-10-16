@@ -413,6 +413,8 @@ async function paginaSong() {
   let schema = null;
   const oefen = { start: null, tempo: 100, herhaal: false };
   const speler = kanSpelen() ? new Speler({ opMaat: zetCursor, opKlaar: () => tekenSpeler() }) : null;
+  // Piano: één laadpoging per pagina (nieuw → laden → klaar of mislukt).
+  let piano = "nieuw";
 
   function markeerStart() {
     const oud = $(".maatvak.start");
@@ -429,14 +431,34 @@ async function paginaSong() {
     if (speler) wijzig(() => {});
   }
 
+  async function speelKnop() {
+    if (speler.speelt) { speler.stop(); return; }
+    if (piano === "laden") return;
+    const ctx = speler.ontgrendel();  // binnen de tik, vóór de await (iOS)
+    if (piano === "nieuw") {
+      piano = "laden";
+      tekenSpeler();
+      try {
+        speler.geluid = pianoGeluid(await binnen(laadPiano(ctx), 10000));
+        piano = "klaar";
+      } catch (e) {
+        piano = "mislukt";
+        $("#hulp").textContent = "Piano niet geladen — eenvoudige klank. Tik op een maat om daar te beginnen.";
+      }
+      if (document.visibilityState === "hidden") { tekenSpeler(); return; }
+    }
+    speel();
+  }
+
   function speel() {
     if (fragmentAudio) fragmentAudio.pause();
     const maten = schema.delen.flatMap(d => d.maten);
     const tellen = tellenUit(schema.maatsoort);
     const bpm = (schema.tempo || 100) * oefen.tempo / 100;
     const b = speelBereik(schema.delen, oefen.start, oefen.herhaal);
-    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind }),
-      oefen.herhaal ? speelplan(maten, { bpm, tellen, start: b.lusStart, eind: b.eind, inteltel: 0 }) : null);
+    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind, stijl: "shuffle" }),
+      oefen.herhaal ? speelplan(maten, { bpm, tellen, start: b.lusStart, eind: b.eind, inteltel: 0,
+        stijl: "shuffle" }) : null);
     tekenSpeler();
   }
 
@@ -449,8 +471,8 @@ async function paginaSong() {
   function tekenSpeler() {
     const vanaf = speelBereik(schema.delen, oefen.start, false).start;
     $("#speler").replaceChildren(
-      el("button", { class: "speelknop", onclick: () => (speler.speelt ? speler.stop() : speel()) },
-        speler.speelt ? "■ Stop" : "▶ Speel"),
+      el("button", { class: "speelknop", disabled: piano === "laden", onclick: speelKnop },
+        piano === "laden" ? "Piano laden…" : speler.speelt ? "■ Stop" : "▶ Speel"),
       el("span", { class: "klein" }, `vanaf maat ${vanaf}`),
       el("div", { class: "wissel tempo" }, [50, 75, 100].map(p => el("button",
         { "aria-pressed": String(p === oefen.tempo), onclick: () => wijzig(() => { oefen.tempo = p; }) },

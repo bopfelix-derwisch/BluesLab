@@ -1,6 +1,6 @@
 # BluesLab — meespelen met piano en shuffle
 
-**Datum:** 2026-10-16 · **Status:** ontwerp, goedgekeurd in de chat (2026-10-16) · **Bouwt op:** oefenen (`2026-10-15-oefenen-design.md`)
+**Datum:** 2026-10-16 · **Status:** gebouwd (2026-10-16) · **Bouwt op:** oefenen (`2026-10-15-oefenen-design.md`)
 
 ## 1. Doel
 

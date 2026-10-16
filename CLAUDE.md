@@ -38,6 +38,9 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
   spec `docs/superpowers/specs/2026-10-15-oefenen-design.md`, plan `docs/superpowers/plans/2026-10-15-oefenen.md`.
   Fragment = iTunes Search API vanuit de browser; begeleiding = eigen Web-Audio-synth in `web/speler.js`.
   Geen serverwijziging. *Status: gebouwd (2026-10-15), branch `bl-2-site`.*
+- **Meespelen met piano en shuffle**: spec `docs/superpowers/specs/2026-10-16-piano-shuffle-design.md`,
+  plan `docs/superpowers/plans/2026-10-16-piano-shuffle.md`. Salamander-samples in `web/piano/`
+  (opnieuw maken: `scripts/piano-samples.sh`), geladen bij de eerste ▶. *Status: gebouwd (2026-10-16), branch `bl-2-site`.*
 - Later: mooier geluid (samples), drums/shuffle, live meeluisteren (mic), feedback na de repetitie, LLM-coaching, sessielog.
 
 ## Valkuilen
@@ -49,6 +52,7 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
 - Pagina's laden `app.js?v=N`: Cloudflare geeft statische bestanden 4 uur browsercache. **Verhoog `v`** in alle `web/*.html` bij elke wijziging aan `app.js`/`style.css` (en in `song.html` voor `speler.js`).
 - Frontend-tests: `tests/test_web.py` en `tests/test_speler.py` draaien `web/speler.js` + `web/app.js` met node in een nep-browser (`tests/web_harness.js`, `tests/web_eval.js`).
 - **Node op orin3 is v12**: geen `?.` of `??` in `web/*.js`, anders falen de frontend-tests (syntaxfout).
+- iOS zet audio alleen aan binnen een tik: `speler.ontgrendel()` vóór elke `await` (het laden van de piano is async).
 - Fragmentkeuze: iTunes zet soms een ander nummer bovenaan (Spooky → de Stones); `kiesFragment` laat daarom de exacte titel voorgaan.
 - Na een wijziging aan `app/`/`core/`/`web/`: `sudo systemctl restart blueslab.service`.
 - Enharmonische spelling is een rabbit hole → MVP-pragmatisch (story §5), niet perfectioneren.
