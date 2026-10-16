@@ -202,7 +202,8 @@ const INTELTIK = 0.06;  // de tikken vooraf iets harder dan de zachte tik tijden
 // Eén gebeurtenis als korte toon(en) met een envelop; inteltikken klinken hoger en harder.
 function speelGeluid(ctx, e, wanneer, uit) {
   const vorm = KLANK[e.soort][0];
-  const sterkte = e.soort === "tik" && e.maat === null ? INTELTIK : KLANK[e.soort][1];
+  const sterkte = (e.soort === "tik" && e.maat === null ? INTELTIK : KLANK[e.soort][1])
+    * (e.sterkte === undefined ? 1 : e.sterkte);
   const tonen = e.soort === "tik" ? [e.maat === null ? 96 : 84] : e.midi;
   for (const m of tonen) {
     const osc = ctx.createOscillator();
@@ -223,14 +224,22 @@ const PIANO_NOTEN = [36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78]
 const PIANO_STERKTE = { bas: 0.5, akkoord: 0.3 };
 const LOSLATEN = 0.08;  // seconden: de toon dempt als een loslatende toets
 
-// Haalt en decodeert alle samples; één fout = alles fout (geen halve piano).
-function laadPiano(ctx, haal = fetch) {
-  return Promise.all(PIANO_NOTEN.map(m => haal(`piano/${m}.mp3`)
-    .then(r => { if (!r.ok) throw new Error(`piano ${m}: ${r.status}`); return r.arrayBuffer(); })
+const PIANO_PADEN = Object.fromEntries(PIANO_NOTEN.map(m => [m, `piano/${m}.mp3`]));
+// Akoestisch drumstel uit Google Chrome Labs web-audio-samples (Apache-2.0): web/drums/<naam>.mp3.
+const DRUM_PADEN = { kick: "drums/kick.mp3", snare: "drums/snare.mp3", hihat: "drums/hihat.mp3" };
+const DRUMSTERKTE = { kick: 0.9, snare: 0.6, hihat: 0.25 };
+const INTEL_HIHAT = 0.5;
+
+// {sleutel: pad} -> {sleutel: AudioBuffer}; één fout = alles fout (geen half drumstel of halve piano).
+function laadSamples(ctx, paden, haal = fetch) {
+  return Promise.all(Object.entries(paden).map(([sleutel, pad]) => haal(pad)
+    .then(r => { if (!r.ok) throw new Error(`${pad}: ${r.status}`); return r.arrayBuffer(); })
     .then(data => ctx.decodeAudioData(data))
-    .then(buf => [m, buf])))
+    .then(buf => [sleutel, buf])))
     .then(paren => Object.fromEntries(paren));
 }
+const laadPiano = (ctx, haal) => laadSamples(ctx, PIANO_PADEN, haal);
+const laadDrums = (ctx, haal) => laadSamples(ctx, DRUM_PADEN, haal);
 
 // Faalt met "te traag" als `belofte` niet binnen `ms` klaar is.
 function binnen(belofte, ms) {
@@ -241,27 +250,45 @@ function binnen(belofte, ms) {
 
 const dichtsteSample = m => PIANO_NOTEN.reduce((b, s) => (Math.abs(s - m) < Math.abs(b - m) ? s : b));
 
-// Geluidsfunctie zoals speelGeluid, maar met pianosamples; de tik blijft de synth.
-function pianoGeluid(buffers) {
+function speelBuffer(ctx, buffer, rate, sterkte, wanneer, los, uit) {
+  const bron = ctx.createBufferSource();
+  bron.buffer = buffer;
+  bron.playbackRate.value = rate;
+  const vol = ctx.createGain();
+  vol.gain.setValueAtTime(sterkte, wanneer);
+  if (los !== null) {
+    vol.gain.setValueAtTime(sterkte, los);
+    vol.gain.linearRampToValueAtTime(0.0001, los + LOSLATEN);
+  }
+  bron.connect(vol).connect(uit);
+  bron.start(wanneer);
+  if (los !== null) bron.stop(los + LOSLATEN + 0.02);
+}
+
+// Geluidsfunctie voor de Speler. piano/drums: buffers of null. Zonder piano speelt de synth;
+// zonder drums klinken drumgebeurtenissen niet en blijft de tik de synth.
+function maakGeluid({ piano = null, drums = null } = {}) {
   return (ctx, e, wanneer, uit) => {
-    if (e.soort === "tik") { speelGeluid(ctx, e, wanneer, uit); return; }
-    const sterkte = PIANO_STERKTE[e.soort];
-    const los = wanneer + e.duur;
+    const s = e.sterkte === undefined ? 1 : e.sterkte;
+    if (e.soort === "tik") {
+      if (drums && e.maat === null) speelBuffer(ctx, drums.hihat, 1, INTEL_HIHAT, wanneer, null, uit);
+      else speelGeluid(ctx, e, wanneer, uit);
+      return;
+    }
+    if (e.soort in DRUMSTERKTE) {
+      if (drums) speelBuffer(ctx, drums[e.soort], 1, DRUMSTERKTE[e.soort] * s, wanneer, null, uit);
+      return;
+    }
+    if (!piano) { speelGeluid(ctx, e, wanneer, uit); return; }
     for (const m of e.midi) {
-      const s = dichtsteSample(m);
-      const bron = ctx.createBufferSource();
-      bron.buffer = buffers[s];
-      bron.playbackRate.value = Math.pow(2, (m - s) / 12);
-      const vol = ctx.createGain();
-      vol.gain.setValueAtTime(sterkte, wanneer);
-      vol.gain.setValueAtTime(sterkte, los);
-      vol.gain.linearRampToValueAtTime(0.0001, los + LOSLATEN);
-      bron.connect(vol).connect(uit);
-      bron.start(wanneer);
-      bron.stop(los + LOSLATEN + 0.02);
+      const sample = dichtsteSample(m);
+      speelBuffer(ctx, piano[sample], Math.pow(2, (m - sample) / 12), PIANO_STERKTE[e.soort] * s,
+        wanneer, wanneer + e.duur, uit);
     }
   };
 }
+
+const pianoGeluid = buffers => maakGeluid({ piano: buffers });
 
 // Speelt een speelplan op de AudioContext-klok; `herhaal` volgt daarna eindeloos.
 class Speler {

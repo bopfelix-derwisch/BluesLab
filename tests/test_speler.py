@@ -285,7 +285,7 @@ def test_laad_piano_haalt_alle_samples():
 
 def test_laad_piano_een_fout_is_alles_fout():
     r = js("const FOUT = 'piano/51.mp3';" + LAAD + " return laadPiano(ctx, haal); })()")
-    assert r == {"fout": "piano 51: 404"}
+    assert r == {"fout": "piano/51.mp3: 404"}
 
 
 def test_binnen_tijdslimiet():
@@ -391,3 +391,64 @@ def test_stijl_gesorteerd_op_tijd(stijl, drums):
     g, _ = plan(_maten("C F G", "Bbm7/F", "N.C.", "C"), {"bpm": 100, "stijl": stijl, "drums": drums})
     tijden = [x[0] for x in g]
     assert tijden == sorted(tijden)
+
+
+def test_drumsamples_aanwezig_en_licentie():
+    for n in ("kick", "snare", "hihat"):
+        f = WEB / "drums" / f"{n}.mp3"
+        assert f.is_file(), f
+        assert 1_000 < f.stat().st_size < 30_000, f
+    assert "Apache License" in (WEB / "drums" / "LICENSE-Apache-2.0.txt").read_text()
+
+
+def test_laad_drums_haalt_drie_samples():
+    r = js("const FOUT = null;" + LAAD + " return laadDrums(ctx, haal).then(b =>"
+           " ({gevraagd, sleutels: Object.keys(b).sort(), kick: b.kick})); })()")
+    assert r["gevraagd"] == ["drums/kick.mp3", "drums/snare.mp3", "drums/hihat.mp3"]
+    assert r["sleutels"] == ["hihat", "kick", "snare"]
+    assert r["kick"] == "dec:drums/kick.mp3"
+
+
+NEP_GELUID = ("(() => { const bronnen = []; let oscs = 0;"
+              " const param = log => ({setValueAtTime(v) { log.push(v); }, linearRampToValueAtTime() {},"
+              " exponentialRampToValueAtTime() {}});"
+              " const knoop = x => Object.assign({connect: y => y}, x); let laatsteGain = [];"
+              " const ctx = {createGain: () => { laatsteGain = []; return knoop({gain: param(laatsteGain)}); },"
+              " createBufferSource: () => { const b = knoop({playbackRate: {}, start() {}, stop() {}});"
+              " bronnen.push(b); return b; },"
+              " createOscillator: () => { oscs += 1; return knoop({frequency: {}, start() {}, stop() {}}); }};"
+              " const DR = {kick: 'K', snare: 'S', hihat: 'H'};")
+
+
+def test_maak_geluid_drums_met_sterkte():
+    r = js(NEP_GELUID + " const g = maakGeluid({drums: DR});"
+           " g(ctx, {soort: 'kick', midi: [], duur: 0.5, maat: 1, sterkte: 0.5}, 1, {});"
+           " return {buf: bronnen.map(b => b.buffer), gain: laatsteGain[0], oscs}; })()")
+    assert r == {"buf": ["K"], "gain": 0.45, "oscs": 0}
+
+
+def test_maak_geluid_inteltik_wordt_hihat_met_drums():
+    r = js(NEP_GELUID + " const g = maakGeluid({drums: DR});"
+           " g(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: null}, 1, {});"
+           " g(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: 1}, 1, {});"
+           " return {buf: bronnen.map(b => b.buffer), oscs}; })()")
+    assert r == {"buf": ["H"], "oscs": 1}  # alleen de inteltik wordt hi-hat
+
+
+def test_maak_geluid_zonder_piano_synth_en_zonder_drums_stil():
+    r = js(NEP_GELUID + " maakGeluid({drums: DR})(ctx, {soort: 'bas', midi: [36, 43], duur: 0.5, maat: 1}, 1, {});"
+           " const synth = oscs;"
+           " maakGeluid({})(ctx, {soort: 'snare', midi: [], duur: 0.5, maat: 1}, 1, {});"
+           " return {synth, bronnen: bronnen.length, oscs}; })()")
+    assert r == {"synth": 2, "bronnen": 0, "oscs": 2}
+
+
+def test_synth_volgt_sterkte():
+    r = js("(() => { const pieken = []; const knoop = x => Object.assign({connect: y => y}, x);"
+           " const ctx = {createOscillator: () => knoop({frequency: {}, start() {}, stop() {}}),"
+           " createGain: () => knoop({gain: {setValueAtTime() {}, exponentialRampToValueAtTime() {},"
+           " linearRampToValueAtTime(v) { pieken.push(v); }}})};"
+           " speelGeluid(ctx, {soort: 'akkoord', midi: [60], duur: 0.3, maat: 1}, 0, {});"
+           " speelGeluid(ctx, {soort: 'akkoord', midi: [60], duur: 0.3, maat: 1, sterkte: 0.5}, 0, {});"
+           " return pieken; })()")
+    assert r[1] == r[0] / 2
