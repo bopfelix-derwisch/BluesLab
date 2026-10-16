@@ -101,3 +101,28 @@ def test_zet_stijl(conn):
     assert db.zet_stijl(conn, sid, "funk") is True
     assert db.song(conn, sid)["stijl"] == "funk"
     assert db.zet_stijl(conn, 999, "pop") is False
+
+
+def test_migratie_tegelijk_gestart_geen_fout(tmp_path, monkeypatch):
+    # Twee verzoeken na de herstart: beide zien "geen kolom stijl", de ander voegt hem net eerder toe.
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute(OUD_SONG)
+    oud.close()
+
+    class Laat(sqlite3.Connection):
+        def execute(self, sql, *a):
+            r = super().execute(sql, *a)
+            if sql.startswith("PRAGMA table_info"):
+                rijen = r.fetchall()
+                ander = sqlite3.connect(pad)
+                ander.execute("ALTER TABLE song ADD COLUMN stijl TEXT NOT NULL DEFAULT 'shuffle'")
+                ander.commit()
+                ander.close()
+                return rijen
+            return r
+
+    echt = sqlite3.connect
+    monkeypatch.setattr(db.sqlite3, "connect", lambda p, **k: echt(p, factory=Laat, **k))
+    db.verbind(pad).close()

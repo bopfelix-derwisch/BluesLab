@@ -54,8 +54,12 @@ def verbind(pad: str) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     # Oudere database: kolom stijl bestond nog niet (CREATE TABLE IF NOT EXISTS voegt hem niet toe).
     if "stijl" not in {r["name"] for r in conn.execute("PRAGMA table_info(song)")}:
-        with conn:
-            conn.execute("ALTER TABLE song ADD COLUMN stijl TEXT NOT NULL DEFAULT 'shuffle'")
+        try:
+            with conn:
+                conn.execute("ALTER TABLE song ADD COLUMN stijl TEXT NOT NULL DEFAULT 'shuffle'")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e):  # een gelijktijdig verzoek was net eerder
+                raise
     return conn
 
 
