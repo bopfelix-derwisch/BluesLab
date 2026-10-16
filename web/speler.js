@@ -135,11 +135,13 @@ function nieuweContext() {
 }
 
 const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
-const KLANK = { bas: ["triangle", 0.35], akkoord: ["triangle", 0.1], tik: ["square", 0.04] };
+const KLANK = { bas: ["triangle", 0.35], akkoord: ["triangle", 0.1], tik: ["square", 0.03] };
+const INTELTIK = 0.06;  // de tikken vooraf iets harder dan de zachte tik tijdens het spelen
 
-// Eén gebeurtenis als korte toon(en) met een envelop; inteltikken klinken hoger.
+// Eén gebeurtenis als korte toon(en) met een envelop; inteltikken klinken hoger en harder.
 function speelGeluid(ctx, e, wanneer, uit) {
-  const [vorm, sterkte] = KLANK[e.soort];
+  const vorm = KLANK[e.soort][0];
+  const sterkte = e.soort === "tik" && e.maat === null ? INTELTIK : KLANK[e.soort][1];
   const tonen = e.soort === "tik" ? [e.maat === null ? 96 : 84] : e.midi;
   for (const m of tonen) {
     const osc = ctx.createOscillator();
@@ -153,6 +155,51 @@ function speelGeluid(ctx, e, wanneer, uit) {
     osc.start(wanneer);
     osc.stop(wanneer + e.duur + 0.02);
   }
+}
+
+// Salamander Grand Piano (Alexander Holm, CC-BY 3.0): web/piano/<midi>.mp3, elke kleine terts.
+const PIANO_NOTEN = [36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78];
+const PIANO_STERKTE = { bas: 0.5, akkoord: 0.3 };
+const LOSLATEN = 0.08;  // seconden: de toon dempt als een loslatende toets
+
+// Haalt en decodeert alle samples; één fout = alles fout (geen halve piano).
+function laadPiano(ctx, haal = fetch) {
+  return Promise.all(PIANO_NOTEN.map(m => haal(`piano/${m}.mp3`)
+    .then(r => { if (!r.ok) throw new Error(`piano ${m}: ${r.status}`); return r.arrayBuffer(); })
+    .then(data => ctx.decodeAudioData(data))
+    .then(buf => [m, buf])))
+    .then(paren => Object.fromEntries(paren));
+}
+
+// Faalt met "te traag" als `belofte` niet binnen `ms` klaar is.
+function binnen(belofte, ms) {
+  let wekker;
+  const teLaat = new Promise((_, nee) => { wekker = setTimeout(() => nee(new Error("te traag")), ms); });
+  return Promise.race([belofte, teLaat]).finally(() => clearTimeout(wekker));
+}
+
+const dichtsteSample = m => PIANO_NOTEN.reduce((b, s) => (Math.abs(s - m) < Math.abs(b - m) ? s : b));
+
+// Geluidsfunctie zoals speelGeluid, maar met pianosamples; de tik blijft de synth.
+function pianoGeluid(buffers) {
+  return (ctx, e, wanneer, uit) => {
+    if (e.soort === "tik") { speelGeluid(ctx, e, wanneer, uit); return; }
+    const sterkte = PIANO_STERKTE[e.soort];
+    const los = wanneer + e.duur;
+    for (const m of e.midi) {
+      const s = dichtsteSample(m);
+      const bron = ctx.createBufferSource();
+      bron.buffer = buffers[s];
+      bron.playbackRate.value = Math.pow(2, (m - s) / 12);
+      const vol = ctx.createGain();
+      vol.gain.setValueAtTime(sterkte, wanneer);
+      vol.gain.setValueAtTime(sterkte, los);
+      vol.gain.linearRampToValueAtTime(0.0001, los + LOSLATEN);
+      bron.connect(vol).connect(uit);
+      bron.start(wanneer);
+      bron.stop(los + LOSLATEN + 0.02);
+    }
+  };
 }
 
 // Speelt een speelplan op de AudioContext-klok; `herhaal` volgt daarna eindeloos.

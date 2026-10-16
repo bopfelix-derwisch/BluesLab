@@ -228,3 +228,70 @@ def test_stop_dempt_wat_al_gepland_is():
     assert ["aan", "luidspreker"] in r
     assert ["geluid", True] in r
     assert r[-1] == ["naar", 0]
+
+
+WEB = Path(__file__).parent.parent / "web"
+
+
+def test_pianosamples_aanwezig_en_klein():
+    noten = js("PIANO_NOTEN")
+    assert noten == list(range(36, 79, 3))
+    for m in noten:
+        f = WEB / "piano" / f"{m}.mp3"
+        assert f.is_file(), f
+        assert 5_000 < f.stat().st_size < 60_000, f
+
+
+NEP_PIANO = ("(() => { const bronnen = []; const tonen = [];"
+             " const param = () => ({setValueAtTime() {}, linearRampToValueAtTime() {},"
+             " exponentialRampToValueAtTime() {}});"
+             " const knoop = x => Object.assign({connect: y => y}, x);"
+             " const ctx = {createGain: () => knoop({gain: param()}),"
+             " createBufferSource: () => { const b = knoop({playbackRate: {}, start() {}, stop() {}});"
+             " bronnen.push(b); return b; },"
+             " createOscillator: () => { const o = knoop({frequency: {}, start() {}, stop() {}});"
+             " tonen.push(o); return o; }};"
+             " const buffers = {}; PIANO_NOTEN.forEach(m => { buffers[m] = 'buf' + m; });")
+
+
+def test_piano_geluid_dichtstbijzijnde_sample_en_toonhoogte():
+    r = js(NEP_PIANO + " const g = pianoGeluid(buffers);"
+           " g(ctx, {soort: 'akkoord', midi: [37, 30, 80], duur: 0.5, maat: 1}, 1, {});"
+           " g(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: 1}, 1, {});"
+           " return {bronnen: bronnen.map(b => [b.buffer, Math.round(b.playbackRate.value * 10000) / 10000]),"
+           " tonen: tonen.length}; })()")
+    assert r["bronnen"] == [["buf36", 1.0595], ["buf36", 0.7071], ["buf78", 1.1225]]
+    assert r["tonen"] == 1  # de tik blijft de synth
+
+
+LAAD = ("(() => { const gevraagd = []; const ctx = {decodeAudioData: d => Promise.resolve('dec:' + d)};"
+        " const haal = url => { gevraagd.push(url); const ok = url !== FOUT;"
+        " return Promise.resolve({ok, status: ok ? 200 : 404, arrayBuffer: () => Promise.resolve(url)}); };")
+
+
+def test_laad_piano_haalt_alle_samples():
+    r = js("const FOUT = null;" + LAAD + " return laadPiano(ctx, haal).then(b =>"
+           " ({gevraagd, b36: b[36], n: Object.keys(b).length})); })()")
+    assert r["gevraagd"] == [f"piano/{m}.mp3" for m in range(36, 79, 3)]
+    assert (r["b36"], r["n"]) == ("dec:piano/36.mp3", 15)
+
+
+def test_laad_piano_een_fout_is_alles_fout():
+    r = js("const FOUT = 'piano/51.mp3';" + LAAD + " return laadPiano(ctx, haal); })()")
+    assert r == {"fout": "piano 51: 404"}
+
+
+def test_binnen_tijdslimiet():
+    assert js("binnen(new Promise(() => {}), 10)") == {"fout": "te traag"}
+    assert js("binnen(Promise.resolve(5), 5000)") == 5  # en de wekker houdt node niet open
+
+
+def test_tik_tijdens_spelen_zachter_dan_inteltel():
+    r = js("(() => { const pieken = []; const knoop = x => Object.assign({connect: y => y}, x);"
+           " const ctx = {createOscillator: () => knoop({frequency: {}, start() {}, stop() {}}),"
+           " createGain: () => knoop({gain: {setValueAtTime() {}, exponentialRampToValueAtTime() {},"
+           " linearRampToValueAtTime(v) { pieken.push(v); }}})};"
+           " speelGeluid(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: null}, 0, {});"
+           " speelGeluid(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: 1}, 0, {});"
+           " return pieken; })()")
+    assert r[0] > r[1] > 0
