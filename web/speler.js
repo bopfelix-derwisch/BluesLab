@@ -75,50 +75,111 @@ const TIK_DUUR = 0.03;
 // Shuffle-linkerhand: bovenop de grondtoon kwint, sext, kleine septiem, sext (+0, +2, +3, +2 op de kwint).
 const SHUFFLE = [0, 2, 3, 2];
 
-// Eén tel shuffle: linkerhand op de lange en de korte achtste, akkoord op tel 2 en 4.
-// p = tel sinds het akkoord begon, b = tel in de maat. Op tijd gesorteerd.
-function shuffleTel(a, t, tel, p, b, maat) {
-  const links = a.slash ? [a.bas]
-    : [a.grond, a.grond + a.kwint + (a.kwint === 7 ? SHUFFLE[p % 4] : 0)];
-  const g = [{ t, soort: "bas", midi: links, duur: 0.9 * tel * 2 / 3, maat }];
-  if (b % 2 === 1) g.push({ t, soort: "akkoord", midi: a.akkoord, duur: 0.25 * tel, maat });
-  g.push({ t: t + tel * 2 / 3, soort: "bas", midi: links, duur: 0.9 * tel / 3, maat });
+// Stijlen: één 4/4-maat in zestienden (positie 0-15). Piano: [positie, rol, duur in tellen, sterkte];
+// drums: [positie, sterkte]. Rollen links: R grondtoon, 5 kwint, 8 octaaf, S shuffle-tweeklank;
+// rechts: A heel akkoord, B0-B3 één toon van het gebroken akkoord. Swing: positie 4b+2 op b + 2/3.
+const ACHTSTEN = [0, 2, 4, 6, 8, 10, 12, 14];
+const ZESTIENDEN = [...Array(16).keys()];
+const STIJLEN = {
+  shuffle: { swing: true,
+    links: ACHTSTEN.map(p => [p, "S", p % 4 ? 0.3 : 0.6, 1]),
+    rechts: [[4, "A", 0.25, 1], [12, "A", 0.25, 1]],
+    kick: [[0, 1], [8, 1]], snare: [[4, 1], [12, 1]], hihat: ACHTSTEN.map(p => [p, 1]) },
+  pop: { swing: false,
+    links: [[0, "R", 1.4, 1], [6, "R", 0.45, 1], [8, "R", 1.8, 1]],
+    rechts: ACHTSTEN.map(p => [p, "A", 0.4, 0.6]),
+    kick: [[0, 1], [8, 1]], snare: [[4, 1], [12, 1]], hihat: ACHTSTEN.map(p => [p, 1]) },
+  ballad: { swing: false,
+    links: [[0, "R", 1.9, 1], [8, "R", 1.9, 1]],
+    rechts: ACHTSTEN.map((p, i) => [p, `B${i % 4}`, 0.9, 0.5]),
+    kick: [[0, 0.6]], snare: [[8, 0.6]], hihat: [0, 4, 8, 12].map(p => [p, 0.5]) },
+  funk: { swing: false,
+    links: [[0, "R", 0.45, 1], [3, "R", 0.2, 1], [6, "8", 0.2, 1], [8, "R", 0.45, 1],
+      [11, "5", 0.2, 1], [14, "8", 0.2, 1]],
+    rechts: [5, 7, 13, 15].map(p => [p, "A", 0.15, 0.7]),
+    kick: [[0, 1], [6, 1]], snare: [[4, 1], [12, 1]], hihat: ZESTIENDEN.map(p => [p, p % 2 ? 0.4 : 0.7]) },
+};
+const DRUMS = ["kick", "snare", "hihat"];
+const DRUM_DUUR = 0.5;  // seconden; de sample klinkt zelf uit
+
+// Positie (zestienden) -> tellen sinds het begin van de maat.
+const posTel = (p, swing) => Math.floor(p / 4) + (swing ? (p % 4 ? 2 / 3 : 0) : (p % 4) / 4);
+
+// Linkerhand-rol -> MIDI-tonen. p = tellen sinds het akkoord begon. Slash: de slash-noot is de grondtoon.
+function linksTonen(a, rol, p) {
+  const g = a.slash ? a.bas : a.grond;
+  if (rol === "S") return a.slash ? [a.bas] : [g, g + a.kwint + (a.kwint === 7 ? SHUFFLE[p % 4] : 0)];
+  if (rol === "5") return [g + a.kwint];
+  if (rol === "8") return [g + 12];
+  return [g];
+}
+
+// Rechterhand-rol -> MIDI-tonen: A = heel akkoord, Bi = toon i van [akkoord..., grondtoon + 12].
+function rechtsTonen(a, rol) {
+  return rol === "A" ? a.akkoord : [a.akkoord.concat([a.akkoord[0] + 12])[Number(rol.slice(1))]];
+}
+
+// Eén maat in een tabelstijl. Zonder drums een tik per tel; met drums de drumregels.
+// Geen speelbaar akkoord (N.C., leeg, onleesbaar): geen piano, met drums alleen hi-hat op de tellen.
+function stijlMaat(pat, akk, begin, tel, maat, drums) {
+  const n = akk.length;
+  const g = [];
+  const op = (p, soort, midi, duur, sterkte) =>
+    g.push({ t: begin + posTel(p, pat.swing) * tel, soort, midi, duur, maat, sterkte });
+  for (let p = 0; p < 16; p++) {
+    const b = Math.floor(p / 4);
+    const k = Math.floor(b * n / 4);
+    const a = n ? akk[k] : null;
+    if (!drums && p % 4 === 0) op(p, "tik", [], TIK_DUUR, 1);
+    if (!a || a.nc) {
+      if (drums && p % 4 === 0) op(p, "hihat", [], DRUM_DUUR, 0.7);
+      continue;
+    }
+    const sinds = b - Math.ceil(k * 4 / n);
+    for (const [q, rol, duur, s] of pat.links) if (q === p) op(p, "bas", linksTonen(a, rol, sinds), duur * tel, s);
+    for (const [q, rol, duur, s] of pat.rechts) if (q === p) op(p, "akkoord", rechtsTonen(a, rol), duur * tel, s);
+    if (drums) for (const soort of DRUMS) for (const [q, s] of pat[soort]) if (q === p) op(p, soort, [], DRUM_DUUR, s);
+  }
   return g;
 }
 
-// Schema-maten -> {gebeurtenissen: [{t, soort, midi, duur, maat}], duur} in seconden.
+// Eén maat recht (elke maatsoort): tik per tel; bas op de eerste tel van elk akkoord (en op even
+// tellen), anders het akkoord.
+function rechteMaat(akk, tellen, begin, tel, maat) {
+  const n = akk.length;
+  const g = [];
+  for (let b = 0; b < tellen; b++) {
+    const t = begin + b * tel;
+    g.push({ t, soort: "tik", midi: [], duur: TIK_DUUR, maat });
+    if (!n) continue;
+    const k = Math.floor(b * n / tellen);
+    const a = akk[k];
+    if (!a || a.nc) continue;
+    const eerste = b === Math.ceil(k * tellen / n);
+    if (eerste || (tellen % 2 === 0 && b % 2 === 0)) {
+      g.push({ t, soort: "bas", midi: [a.bas], duur: 0.9 * tel, maat });
+    } else {
+      g.push({ t, soort: "akkoord", midi: a.akkoord, duur: 0.5 * tel, maat });
+    }
+  }
+  return g;
+}
+
+// Schema-maten -> {gebeurtenissen: [{t, soort, midi, duur, maat, sterkte}], duur} in seconden.
 // start/eind: maatnummers (inclusief). inteltel: tikken vooraf (maat null).
-// Recht: per tel een tik; bas op de eerste tel van elk akkoord (en op even tellen), anders het akkoord.
-// Shuffle (alleen bij 4 tellen): tik per tel, linkerhand in zwingende achtsten, akkoord op 2 en 4.
+// stijl: recht of een sleutel uit STIJLEN (die alleen bij 4 tellen; anders recht).
+// drums: drumregels i.p.v. de tik tijdens het spelen (alleen in een tabelstijl).
 function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity, inteltel = tellen,
-  stijl = "recht" }) {
+  stijl = "recht", drums = false }) {
   const tel = 60 / bpm;
-  const shuffle = stijl === "shuffle" && tellen === 4;
+  const pat = tellen === 4 ? STIJLEN[stijl] : undefined;
   const g = [];
   for (let i = 0; i < inteltel; i++) g.push({ t: i * tel, soort: "tik", midi: [], duur: TIK_DUUR, maat: null });
   const gekozen = maten.filter(m => m.nr >= start && m.nr <= eind);
   gekozen.forEach((m, mi) => {
     const begin = (inteltel + mi * tellen) * tel;
     const akk = m.akkoorden.map(a => akkoordMidi(a.concert));
-    const n = akk.length;
-    for (let b = 0; b < tellen; b++) {
-      const t = begin + b * tel;
-      g.push({ t, soort: "tik", midi: [], duur: TIK_DUUR, maat: m.nr });
-      if (!n) continue;
-      const k = Math.floor(b * n / tellen);
-      const a = akk[k];
-      if (!a || a.nc) continue;
-      const eerste = b === Math.ceil(k * tellen / n);
-      if (shuffle) {
-        g.push(...shuffleTel(a, t, tel, b - Math.ceil(k * tellen / n), b, m.nr));
-        continue;
-      }
-      if (eerste || (tellen % 2 === 0 && b % 2 === 0)) {
-        g.push({ t, soort: "bas", midi: [a.bas], duur: 0.9 * tel, maat: m.nr });
-      } else {
-        g.push({ t, soort: "akkoord", midi: a.akkoord, duur: 0.5 * tel, maat: m.nr });
-      }
-    }
+    g.push(...(pat ? stijlMaat(pat, akk, begin, tel, m.nr, drums) : rechteMaat(akk, tellen, begin, tel, m.nr)));
   });
   return { gebeurtenissen: g, duur: (inteltel + gekozen.length * tellen) * tel };
 }

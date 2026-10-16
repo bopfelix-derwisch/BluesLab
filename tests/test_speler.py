@@ -302,3 +302,92 @@ def test_tik_tijdens_spelen_zachter_dan_inteltel():
            " speelGeluid(ctx, {soort: 'tik', midi: [], duur: 0.03, maat: 1}, 0, {});"
            " return pieken; })()")
     assert r[0] > r[1] > 0
+
+
+# --- Stijlen met drums ----------------------------------------------------------
+
+def _tijden(g, soort, maat=1):
+    return [x[0] for x in g if x[1] == soort and x[3] == maat]
+
+
+def _stijl(stijl, *maten, drums=True):
+    return plan(_maten(*maten), {"bpm": 100, "inteltel": 0, "stijl": stijl, "drums": drums})[0]
+
+
+def test_pop_patroon():
+    g = _stijl("pop", "C")
+    assert _tijden(g, "bas") == [0, 900, 1200]
+    assert _tijden(g, "akkoord") == list(range(0, 2400, 300))
+    assert (_tijden(g, "kick"), _tijden(g, "snare")) == ([0, 1200], [600, 1800])
+    assert _tijden(g, "hihat") == list(range(0, 2400, 300))
+    assert _tijden(g, "tik") == []  # met drums geen tik tijdens het spelen
+
+
+def test_pop_twee_akkoorden_bas_op_8_is_tweede_akkoord():
+    g = _stijl("pop", "C G")
+    assert [x[2] for x in g if x[1] == "bas"] == [[36], [36], [43]]
+
+
+def test_ballad_gebroken_akkoord_drie_en_vierklank():
+    g = _stijl("ballad", "C", "C7")
+    assert [x[2][0] for x in g if x[1] == "akkoord" and x[3] == 1] == [60, 64, 67, 72] * 2
+    assert [x[2][0] for x in g if x[1] == "akkoord" and x[3] == 2] == [60, 64, 67, 70] * 2
+    assert _tijden(g, "bas") == [0, 1200]
+    assert (_tijden(g, "kick"), _tijden(g, "snare"), _tijden(g, "hihat")) == (
+        [0], [1200], [0, 600, 1200, 1800])
+
+
+def test_ballad_rechterhand_zacht():
+    r = js("speelplan([{nr: 1, akkoorden: [{concert: 'C'}]}], {bpm: 100, inteltel: 0,"
+           " stijl: 'ballad'}).gebeurtenissen.filter(e => e.soort === 'akkoord')[0].sterkte")
+    assert r == 0.5
+
+
+def test_funk_patroon():
+    g = _stijl("funk", "C")
+    assert [(x[0], x[2]) for x in g if x[1] == "bas"] == [
+        (0, [36]), (450, [36]), (900, [48]), (1200, [36]), (1650, [43]), (2100, [48])]
+    assert _tijden(g, "akkoord") == [750, 1050, 1950, 2250]
+    assert (_tijden(g, "kick"), _tijden(g, "snare")) == ([0, 900], [600, 1800])
+    assert _tijden(g, "hihat") == list(range(0, 2400, 150))
+
+
+def test_shuffle_met_drums_zwingende_hihat():
+    g = _stijl("shuffle", "C")
+    assert _tijden(g, "hihat") == [0, 400, 600, 1000, 1200, 1600, 1800, 2200]
+    assert (_tijden(g, "kick"), _tijden(g, "snare"), _tijden(g, "tik")) == ([0, 1200], [600, 1800], [])
+
+
+def test_stijl_slash_akkoord_bas_is_slashnoot():
+    assert {tuple(x[2]) for x in _stijl("pop", "Bbm7/F") if x[1] == "bas"} == {(41,)}
+
+
+def test_stijl_nc_met_drums_alleen_hihat_zonder_drums_tik():
+    met = _stijl("pop", "N.C.")
+    assert {x[1] for x in met} == {"hihat"} and _tijden(met, "hihat") == [0, 600, 1200, 1800]
+    zonder = _stijl("pop", "N.C.", drums=False)
+    assert {x[1] for x in zonder} == {"tik"} and _tijden(zonder, "tik") == [0, 600, 1200, 1800]
+
+
+def test_stijl_zonder_drums_tik_en_geen_drums():
+    g = _stijl("funk", "C", drums=False)
+    assert _tijden(g, "tik") == [0, 600, 1200, 1800]
+    assert not [x for x in g if x[1] in ("kick", "snare", "hihat")]
+
+
+def test_drums_aftellen_blijft_tik():
+    g, _ = plan(_maten("C"), {"bpm": 100, "stijl": "pop", "drums": True})
+    assert [x for x in g if x[1] == "tik"] == [[t, "tik", [], None] for t in (0, 600, 1200, 1800)]
+
+
+def test_stijl_niet_bij_drie_kwart():
+    opties = {"bpm": 120, "tellen": 3}
+    assert plan(_maten("C"), dict(opties, stijl="pop", drums=True)) == plan(_maten("C"), opties)
+
+
+@pytest.mark.parametrize("stijl", ["shuffle", "pop", "ballad", "funk"])
+@pytest.mark.parametrize("drums", [True, False])
+def test_stijl_gesorteerd_op_tijd(stijl, drums):
+    g, _ = plan(_maten("C F G", "Bbm7/F", "N.C.", "C"), {"bpm": 100, "stijl": stijl, "drums": drums})
+    tijden = [x[0] for x in g]
+    assert tijden == sorted(tijden)
