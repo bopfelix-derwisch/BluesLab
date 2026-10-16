@@ -1,6 +1,6 @@
 # BluesLab — stijlen per nummer met drums (shuffle, pop, ballad, funk)
 
-**Datum:** 2026-10-16 · **Status:** ontwerp, goedgekeurd in de chat (2026-10-16) · **Bouwt op:** piano + shuffle (`2026-10-16-piano-shuffle-design.md`)
+**Datum:** 2026-10-16 · **Status:** gebouwd (2026-10-16) · **Bouwt op:** piano + shuffle (`2026-10-16-piano-shuffle-design.md`)
 
 ## 1. Doel
 

@@ -1,7 +1,8 @@
 // Draait web/app.js in een nep-browser (vm) en print wat er gebeurde als JSON.
 // Gebruik: node tests/web_harness.js <pagina> <http-status voor elke API-aanroep>
 // Omgeving: BLUESLAB_FIXTURES, BLUESLAB_AUDIO, BLUESLAB_ACTIES (zie verderop),
-// BLUESLAB_PIANO (ok | fout | traag | hangt) en BLUESLAB_VERBORGEN=1 (pagina niet zichtbaar).
+// BLUESLAB_PIANO (ok | fout | traag | hangt), BLUESLAB_DRUMS (ok | fout), BLUESLAB_PUT_STATUS
+// (status voor PUT-aanroepen) en BLUESLAB_VERBORGEN=1 (pagina niet zichtbaar).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -23,6 +24,11 @@ const pianoAntwoord = async () => {
   const ok = pianoStand !== "fout";
   return { ok, status: ok ? 200 : 404, arrayBuffer: async () => new ArrayBuffer(8) };
 };
+const drumsAntwoord = async () => {
+  const ok = (process.env.BLUESLAB_DRUMS || "ok") !== "fout";
+  return { ok, status: ok ? 200 : 404, arrayBuffer: async () => new ArrayBuffer(8) };
+};
+const puts = [];   // [pad, body] van elke PUT
 const gemaakt = [];   // elementen uit createElement, voor BLUESLAB_ACTIES
 const nepElement = (sel) => elementen[sel] || (elementen[sel] = {
   hidden: true, value: "", textContent: "", _attrs: {}, _on: {}, _tekst: "",
@@ -65,11 +71,17 @@ const ctx = {
     reload() { navigaties.push("reload"); },
   },
   // Elke API-aanroep krijgt dezelfde status (niet ingelogd = overal 401).
-  fetch: async (pad) => {
+  fetch: async (pad, init) => {
     fetches.push(pad);
     if (pad.startsWith("piano/")) return pianoAntwoord();
-    return { status: ikStatus, ok: ikStatus < 400,
-      json: async () => (ikStatus < 400 ? antwoordVoor(pad) : { detail: "Log eerst in." }) };
+    if (pad.startsWith("drums/")) return drumsAntwoord();
+    let status = ikStatus;
+    if (init && init.method === "PUT") {
+      puts.push([pad, init.body]);
+      status = Number(process.env.BLUESLAB_PUT_STATUS || ikStatus);
+    }
+    return { status, ok: status < 400,
+      json: async () => (status < 400 ? antwoordVoor(pad) : { detail: "Log eerst in." }) };
   },
   navigator: { audioSession: { type: "auto" }, wakeLock: { request: async () => { wakelock += 1; return { addEventListener() {} }; } } },
 };
@@ -95,6 +107,9 @@ vm.createContext(ctx);
 for (const f of ["speler.js", "app.js"]) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "web", f), "utf8"), ctx);
 }
+const plannen = [];  // opties van elke speelplan-aanroep door de app
+const echtPlan = ctx.speelplan;
+ctx.speelplan = (maten, opties) => { plannen.push(opties); return echtPlan(maten, opties); };
 luisteraars.DOMContentLoaded.forEach(f => f());
 // Optioneel: BLUESLAB_ACTIES = JSON ["data-nr=3", "tekst=▶ Speel", ...]: klik na het laden
 // op het laatst gemaakte element met dat attribuut of die tekst.
@@ -126,6 +141,7 @@ const inKlik = [];  // resume-aanroepen synchroon binnen elke klik
     fout: nepElement("#fout").textContent, luisterNaar, wakelock, nullKinderen,
     speler_zichtbaar: !nepElement("#speler").hidden, maatvakken, fetches, starts,
     audiosessie: ctx.navigator.audioSession.type, resumes, inKlik,
-    hulp: nepElement("#hulp").textContent, speelknop: speelknop() }));
+    hulp: nepElement("#hulp").textContent, speelknop: speelknop(),
+    puts, plannen, knoppen: [...new Set(gemaakt.filter(e => e._on.click).map(e => e._tekst))] }));
   process.exit(0);  // een spelende Speler houdt anders de klok (setInterval) open
 })();

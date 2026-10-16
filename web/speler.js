@@ -227,7 +227,7 @@ const LOSLATEN = 0.08;  // seconden: de toon dempt als een loslatende toets
 const PIANO_PADEN = Object.fromEntries(PIANO_NOTEN.map(m => [m, `piano/${m}.mp3`]));
 // Akoestisch drumstel uit Google Chrome Labs web-audio-samples (Apache-2.0): web/drums/<naam>.mp3.
 const DRUM_PADEN = { kick: "drums/kick.mp3", snare: "drums/snare.mp3", hihat: "drums/hihat.mp3" };
-const DRUMSTERKTE = { kick: 0.9, snare: 0.6, hihat: 0.25 };
+const DRUMSTERKTE = { kick: 0.6, snare: 0.45, hihat: 0.2 };  // samen met de piano onder 0 dB
 const INTEL_HIHAT = 0.5;
 
 // {sleutel: pad} -> {sleutel: AudioBuffer}; één fout = alles fout (geen half drumstel of halve piano).

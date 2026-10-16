@@ -247,7 +247,7 @@ def test_audio_ontgrendeld_binnen_de_tik():
 
 def test_tijdens_laden_knop_uit_en_geen_start():
     r = _speel("tekst=▶ Speel", BLUESLAB_PIANO="hangt")
-    assert r["speelknop"] == {"tekst": "Piano laden…", "uit": True}
+    assert r["speelknop"] == {"tekst": "Laden…", "uit": True}
     assert r["starts"] == 0
 
 
@@ -285,3 +285,73 @@ def test_weg_en_terug_tijdens_laden_niet_alsnog_starten():
     r = _speel("tekst=▶ Speel", "zicht=hidden", "zicht=visible", "wacht=100", BLUESLAB_PIANO="traag:80")
     assert r["starts"] == 0
     assert r["speelknop"]["tekst"] == "▶ Speel"
+
+
+# --- Stijlen met drums ----------------------------------------------------------
+
+def _drum_fetches(r):
+    return [f for f in r["fetches"] if f.startswith("drums/")]
+
+
+def test_stijlknoppen_bij_vier_kwart():
+    assert {"Shuffle", "Pop", "Ballad", "Funk"} <= set(_speel()["knoppen"])
+
+
+def test_geen_stijlknoppen_bij_drie_kwart():
+    schema = dict(SCHEMA, maatsoort="3/4")
+    r = draai("song", 200, "?id=1", {"/api/songs/": schema, "/api/setlists/": SETLIST}, audio=True)
+    assert "Pop" not in r["knoppen"]
+    assert r["nullKinderen"] == 0
+
+
+def test_tik_op_pop_bewaart_stijl():
+    r = _speel("tekst=Pop")
+    assert r["puts"] == [["/api/songs/1/stijl", '{"stijl":"pop"}']]
+    assert r["hulp"] == ""
+
+
+def test_stijl_bewaren_mislukt_meldt():
+    r = _speel("tekst=Pop", BLUESLAB_PUT_STATUS="404")  # oude server zonder de route
+    assert "Stijl niet bewaard" in r["hulp"]
+
+
+def test_speel_geeft_stijl_en_drums_door():
+    r = _speel("tekst=▶ Speel")
+    assert len(_piano_fetches(r)) == 15 and len(_drum_fetches(r)) == 3
+    assert (r["plannen"][0]["stijl"], r["plannen"][0]["drums"]) == ("shuffle", True)  # schema zonder stijl
+
+
+def test_stijl_uit_schema():
+    schema = dict(SCHEMA, stijl="funk")
+    r = draai("song", 200, "?id=1", {"/api/songs/": schema, "/api/setlists/": SETLIST},
+              audio=True, acties=["tekst=▶ Speel"])
+    assert r["plannen"][0]["stijl"] == "funk"
+
+
+def test_stijl_wisselen_tijdens_spelen_herstart():
+    r = _speel("tekst=▶ Speel", "tekst=Pop")
+    assert r["starts"] == 2
+    assert r["plannen"][-1]["stijl"] == "pop"
+
+
+def test_stijl_kiezen_tijdens_laden_start_niet():
+    r = _speel("tekst=▶ Speel", "tekst=Pop", BLUESLAB_PIANO="hangt")
+    assert r["starts"] == 0
+
+
+def test_drums_mislukt_met_tik_en_melding():
+    r = _speel("tekst=▶ Speel", BLUESLAB_DRUMS="fout")
+    assert r["starts"] == 1
+    assert r["plannen"][0]["drums"] is False
+    assert "Drums niet geladen" in r["hulp"] and "Piano" not in r["hulp"]
+
+
+def test_piano_mislukt_drums_wel():
+    r = _speel("tekst=▶ Speel", BLUESLAB_PIANO="fout")
+    assert r["plannen"][0]["drums"] is True
+    assert "Piano niet geladen" in r["hulp"] and "Drums" not in r["hulp"]
+
+
+def test_hulptekst_noemt_drums():
+    html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
+    assert "Google Chrome Labs" in html and "Apache-2.0" in html

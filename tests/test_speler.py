@@ -424,7 +424,7 @@ def test_maak_geluid_drums_met_sterkte():
     r = js(NEP_GELUID + " const g = maakGeluid({drums: DR});"
            " g(ctx, {soort: 'kick', midi: [], duur: 0.5, maat: 1, sterkte: 0.5}, 1, {});"
            " return {buf: bronnen.map(b => b.buffer), gain: laatsteGain[0], oscs}; })()")
-    assert r == {"buf": ["K"], "gain": 0.45, "oscs": 0}
+    assert r == {"buf": ["K"], "gain": 0.3, "oscs": 0}  # kick 0,6 × sterkte 0,5
 
 
 def test_maak_geluid_inteltik_wordt_hihat_met_drums():

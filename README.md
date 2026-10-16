@@ -52,12 +52,14 @@ Upload een Chordify-PDF, controleer de gelezen maten en krijg per maat een speel
 (geschreven akkoord, akkoordtonen, doeltoon) voor Bes klarinet of alt sax.
 
 Oefenen op de songpagina: **▶ Fragment** speelt 30 s van de echte opname (iTunes), en
-**▶ Speel** speelt uit de concert-akkoorden een shuffle op piano (linkerhand kwint-sext-septiem,
-akkoord op 2 en 4) met een zachte tik.
+**▶ Speel** speelt uit de concert-akkoorden een begeleiding in de stijl van het nummer
+(**Shuffle · Pop · Ballad · Funk**, per nummer bewaard) met piano en drums.
 Tik op een maat om daar te beginnen; tempo 50/75/100 %; **🔁 Herhaal dit deel** lust het deel.
 Pianoklank: samples van de **Salamander Grand Piano** (Alexander Holm, CC-BY 3.0), via Tone.js,
 verkleind met `scripts/piano-samples.sh` naar `web/piano/`. Lukt het laden niet, dan klinkt een
 eenvoudige synth.
+Drums: het akoestische drumstel uit Google Chrome Labs `web-audio-samples` (Apache-2.0, licentie in
+`web/drums/`), verkleind met `scripts/drum-samples.sh`. Lukken de drums niet, dan klinkt een tik.
 
 ```bash
 # Eenmalig
