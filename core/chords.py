@@ -10,6 +10,8 @@ Transponeren gaat letter-gebaseerd: Bes klarinet = grote secunde omhoog
 Zo wordt concert G♭ geschreven A♭ (klarinet) en E♭ (alt sax), nooit G#/D#.
 """
 
+import re
+
 from core.theory import LETTERS, LETTER_PC, VOICES, spell_note
 
 # Letterstappen per voice; hoort bij de halve tonen in theory.VOICES.
@@ -180,3 +182,36 @@ def guide_tone_name(pc: int, chord: dict, voice: str) -> str:
             wpc, wletter = transpose_note(pc, root_letter + loff, voice)
             return note_name(wpc, wletter)
     raise ValueError(f"Toon {pc} hoort niet bij {chord['tekst']!r}.")
+
+
+# --- fills (blazerspartij per maat) ----------------------------------------
+MAX_FILL = 32
+_FILL_SCHEIDING = re.compile(r"[\s,\-–]+")
+
+
+def parse_fill(tekst: str, voice: str) -> list:
+    """Fill zoals Bob hem typt, geschreven voor `voice` -> concert [[pc, letter], ...].
+
+    Scheiding: spaties, komma's, '-' of '–'. Een noot = letter A-G (kleine letter mag)
+    + hooguit één voorteken (#, ♯, b, ♭). Lege tekst -> [].
+    """
+    _check_voice(voice)
+    noten = []
+    for woord in _FILL_SCHEIDING.split(tekst.strip()):
+        if not woord:
+            continue
+        try:
+            pc, letter, rest = _parse_note(woord[0].upper() + woord[1:])
+        except ValueError:
+            rest = None
+        if rest != "":
+            raise ValueError(f"Onbekende noot: {woord!r}.")
+        noten.append([(pc - VOICES[voice]) % 12, (letter - VOICE_LETTERS[voice]) % 7])
+    if len(noten) > MAX_FILL:
+        raise ValueError(f"Te veel noten (max. {MAX_FILL}).")
+    return noten
+
+
+def fill_names(noten: list, voice: str) -> list:
+    """Concert [[pc, letter], ...] -> geschreven nootnamen voor `voice`."""
+    return [note_name(*transpose_note(pc, letter, voice)) for pc, letter in noten]

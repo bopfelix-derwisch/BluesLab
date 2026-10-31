@@ -1,6 +1,10 @@
+import re
+
 import pytest
 
-from core.chords import chord_tones, guide_tones, parse_chord, transpose_chord
+from core.chords import (
+    chord_tones, fill_names, guide_tones, parse_chord, parse_fill, transpose_chord,
+)
 
 
 @pytest.mark.parametrize("tekst, root_pc, kwaliteit, extensie", [
@@ -88,3 +92,54 @@ def test_guide_tones():
     assert guide_tones(parse_chord("C7")) == [4, 10]   # E, Bb
     assert guide_tones(parse_chord("Am")) == [0]       # C
     assert guide_tones(parse_chord("Fadd9")) == [9]    # A (noon is geen gidstoon)
+
+
+# --- fills ---------------------------------------------------------------
+
+def test_parse_fill_klarinet_naar_concert():
+    assert parse_fill("E F E", "bb_clarinet") == [[2, 1], [3, 2], [2, 1]]  # concert D Eb D
+
+
+def test_parse_fill_alt_naar_concert():
+    assert parse_fill("B C B", "eb_alto_sax") == [[2, 1], [3, 2], [2, 1]]
+
+
+def test_parse_fill_scheidingstekens_en_kleine_letters():
+    assert parse_fill(" e–f - e, d ", "bb_clarinet") == [[2, 1], [3, 2], [2, 1], [0, 0]]
+
+
+def test_parse_fill_voortekens():
+    assert parse_fill("D# D♯ bb B♭ eb", "concert") == [[3, 1], [3, 1], [10, 6], [10, 6], [3, 2]]
+
+
+def test_parse_fill_leeg():
+    assert parse_fill("", "bb_clarinet") == []
+    assert parse_fill("  - , ", "bb_clarinet") == []
+
+
+@pytest.mark.parametrize("tekst, fout", [
+    ("D H", "Onbekende noot: 'H'."),
+    ("Dm", "Onbekende noot: 'Dm'."),
+    ("D##", "Onbekende noot: 'D##'."),
+])
+def test_parse_fill_foute_noot(tekst, fout):
+    with pytest.raises(ValueError, match=re.escape(fout)):
+        parse_fill(tekst, "bb_clarinet")
+
+
+def test_parse_fill_max_32():
+    assert len(parse_fill(" ".join(["C"] * 32), "concert")) == 32
+    with pytest.raises(ValueError, match=re.escape("Te veel noten (max. 32).")):
+        parse_fill(" ".join(["C"] * 33), "concert")
+
+
+def test_fill_names_geschreven():
+    noten = [[2, 1], [3, 2], [2, 1]]  # concert D Eb D
+    assert fill_names(noten, "bb_clarinet") == ["E", "F", "E"]
+    assert fill_names(noten, "eb_alto_sax") == ["B", "C", "B"]
+
+
+def test_fill_heen_en_terug_houdt_spelling():
+    for voice in ("bb_clarinet", "eb_alto_sax"):
+        assert fill_names(parse_fill("D D# E Gb", voice), voice) == ["D", "D#", "E", "Gb"]
+    assert fill_names(parse_fill("D#", "bb_clarinet"), "eb_alto_sax") == ["A#"]  # nooit Bb

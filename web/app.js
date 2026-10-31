@@ -26,9 +26,10 @@ function mooi(naam) {
 
 function param(naam) { return new URLSearchParams(location.search).get(naam); }
 
-// Per deel: start_maat van het eerste eerdere deel met precies dezelfde akkoorden, anders null.
+// Per deel: start_maat van het eerste eerdere deel met precies dezelfde akkoorden (en fills), anders null.
 function herhalingen(delen) {
-  const vingerafdruk = d => d.maten.map(m => m.akkoorden.map(a => a.concert).join(" ")).join("|");
+  const vingerafdruk = d => d.maten.map(m => m.akkoorden.map(a => a.concert).join(" ") +
+    (m.fill ? ` ♪${m.fill.join(" ")}` : "")).join("|");
   const gezien = {};
   return delen.map(d => {
     const v = vingerafdruk(d);
@@ -338,16 +339,27 @@ async function zetNavigatie(setlistId, id) {
   }
 }
 
-function maatRaster(maten, opTik) {
-  return el("div", { class: "maatraster" }, maten.map(m => el("div",
-    { class: "maatvak", "data-nr": m.nr, onclick: () => opTik(m.nr) },
-    el("span", { class: "nr" }, m.nr),
-    el("div", { class: "akkoord" }, m.akkoorden.map(a =>
-      a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
-      .flatMap((x, i) => (i ? [" ", x] : [x]))),
-    el("div", { class: "tonen" }, m.akkoorden.filter(a => !a.fout)
-      .map(a => a.tonen.map(mooi).join(" ")).join(" | ")),
-    m.doeltoon ? el("div", { class: "doel" }, `→ ${mooi(m.doeltoon)}`) : null)));
+// "♪ E–F–E" (geschreven namen) of "" zonder fill.
+function fillTekst(fill) {
+  return fill && fill.length ? `♪ ${fill.map(mooi).join("–")}` : "";
+}
+
+// fillRegels: krijgt per maatnummer het fill-element, zodat een bewaarde fill alleen die regel vervangt.
+function maatRaster(maten, opTik, fillRegels = {}) {
+  return el("div", { class: "maatraster" }, maten.map(m => {
+    const fill = el("div", { class: "fill" });
+    fill.textContent = fillTekst(m.fill);
+    fillRegels[m.nr] = fill;
+    return el("div", { class: "maatvak", "data-nr": m.nr, onclick: () => opTik(m.nr) },
+      el("span", { class: "nr" }, m.nr),
+      el("div", { class: "akkoord" }, m.akkoorden.map(a =>
+        a.fout ? el("span", { class: "fout", title: a.fout }, `⚠ ${a.concert}`) : mooi(a.geschreven))
+        .flatMap((x, i) => (i ? [" ", x] : [x]))),
+      el("div", { class: "tonen" }, m.akkoorden.filter(a => !a.fout)
+        .map(a => a.tonen.map(mooi).join(" ")).join(" | ")),
+      m.doeltoon ? el("div", { class: "doel" }, `→ ${mooi(m.doeltoon)}`) : null,
+      fill);
+  }));
 }
 
 // Cursor op het klinkende maatvak (null = weg); een ingeklapte herhaling gaat open.
@@ -405,6 +417,8 @@ async function toonFragment(s, bijAfspelen) {
   teken();
 }
 
+const STIJL_NAMEN = [["shuffle", "Shuffle"], ["pop", "Pop"], ["ballad", "Ballad"], ["funk", "Funk"]];
+
 async function paginaSong() {
   const id = Number(param("id"));
   $("#naar-controle").href = `controle.html?id=${id}`;
@@ -413,11 +427,18 @@ async function paginaSong() {
   let schema = null;
   const oefen = { start: null, tempo: 100, herhaal: false };
   const speler = kanSpelen() ? new Speler({ opMaat: zetCursor, opKlaar: () => tekenSpeler() }) : null;
-  // Piano: één laadpoging per pagina (nieuw → laden → klaar of mislukt).
-  let piano = "nieuw";
+  // Samples: één laadpoging per pagina (nieuw → laden → klaar); piano en drums los van elkaar.
+  let laden = "nieuw";
+  let drumsGeladen = false;
+  let stijl = "shuffle";
   // Weg geweest tijdens het laden: daarna niet alsnog starten. iOS bevriest JS op de
   // achtergrond, dus het laden is vaak pas klaar als de pagina alweer zichtbaar is.
   let wegTijdensLaden = false;
+  // Fills bewerken: een tik op een maat opent het invulvenster in plaats van het startpunt te zetten.
+  let bewerken = false;
+  let fillRegels = {};
+  const fillVak = el("span", {});
+  const hulpStandaard = $("#hulp").textContent;
 
   function markeerStart() {
     const oud = $(".maatvak.start");
@@ -434,24 +455,69 @@ async function paginaSong() {
     if (speler) wijzig(() => {});
   }
 
+  function tikMaat(nr) {
+    if (bewerken) bewerkFill(nr); else kiesStart(nr);
+  }
+
+  function fillKnop() {
+    return el("button", { class: "stil", "aria-pressed": String(bewerken), onclick: wisselBewerken },
+      bewerken ? "✎ Klaar" : "✎ Fills bewerken");
+  }
+
+  function wisselBewerken() {
+    bewerken = !bewerken;
+    fillVak.replaceChildren(fillKnop());
+    $("#hulp").textContent = bewerken
+      ? "Tik op een maat om de fill te typen, zoals jij hem speelt (bv. F E). Leeg = weg." : hulpStandaard;
+    $("#hulp").hidden = !bewerken && !speler;
+  }
+
+  async function bewerkFill(nr) {
+    const m = schema.delen.flatMap(d => d.maten).find(x => x.nr === nr);
+    if (!m) return;
+    const inst = schema.instrument;
+    // prompt() houdt de klok van de Speler stil terwijl de audioklok doorloopt; daarna zouden
+    // alle gemiste noten tegelijk klinken. Dus eerst stoppen.
+    if (speler && speler.speelt) speler.stop();
+    const tekst = prompt(`Fill maat ${nr} (geschreven voor ${INSTRUMENTEN[inst]}), bv. F E:`,
+      (m.fill || []).join(" "));
+    if (tekst === null) return;  // Annuleren
+    try {
+      const r = await api(`/api/songs/${id}/fills/${nr}`, { method: "PUT", json: { noten: tekst, instrument: inst } });
+      m.fill = r.fill;
+      if (fillRegels[nr]) fillRegels[nr].textContent = fillTekst(r.fill);
+    } catch (e) {
+      $("#hulp").textContent = `Fill niet bewaard: ${e.message}`;
+    }
+  }
+
   async function speelKnop() {
     if (speler.speelt) { speler.stop(); return; }
-    if (piano === "laden") return;
+    if (laden === "laden") return;
     const ctx = speler.ontgrendel();  // binnen de tik, vóór de await (iOS)
-    if (piano === "nieuw") {
-      piano = "laden";
+    if (laden === "nieuw") {
+      laden = "laden";
       wegTijdensLaden = false;
       tekenSpeler();
-      try {
-        speler.geluid = pianoGeluid(await binnen(laadPiano(ctx), 10000));
-        piano = "klaar";
-      } catch (e) {
-        piano = "mislukt";
-        $("#hulp").textContent = "Piano niet geladen — eenvoudige klank. Tik op een maat om daar te beginnen.";
-      }
+      const [piano, drums] = await Promise.all([
+        binnen(laadPiano(ctx), 10000).catch(() => null),
+        binnen(laadDrums(ctx), 10000).catch(() => null)]);
+      laden = "klaar";
+      drumsGeladen = Boolean(drums);
+      speler.geluid = maakGeluid({ piano, drums });
+      const meldingen = [piano ? "" : "Piano niet geladen — eenvoudige klank.",
+        drums ? "" : "Drums niet geladen — met tik."].filter(Boolean);
+      if (meldingen.length) $("#hulp").textContent = `${meldingen.join(" ")} Tik op een maat om daar te beginnen.`;
       if (wegTijdensLaden || document.visibilityState === "hidden") { tekenSpeler(); return; }
     }
     speel();
+  }
+
+  function kiesStijl(k) {
+    wijzig(() => { stijl = k; });
+    api(`/api/songs/${id}/stijl`, { method: "PUT", json: { stijl: k } }).catch(() => {
+      $("#hulp").textContent = "Stijl niet bewaard. Tik op een maat om daar te beginnen.";
+    });
   }
 
   function speel() {
@@ -460,9 +526,9 @@ async function paginaSong() {
     const tellen = tellenUit(schema.maatsoort);
     const bpm = (schema.tempo || 100) * oefen.tempo / 100;
     const b = speelBereik(schema.delen, oefen.start, oefen.herhaal);
-    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind, stijl: "shuffle" }),
+    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind, stijl, drums: drumsGeladen }),
       oefen.herhaal ? speelplan(maten, { bpm, tellen, start: b.lusStart, eind: b.eind, inteltel: 0,
-        stijl: "shuffle" }) : null);
+        stijl, drums: drumsGeladen }) : null);
     tekenSpeler();
   }
 
@@ -474,16 +540,19 @@ async function paginaSong() {
 
   function tekenSpeler() {
     const vanaf = speelBereik(schema.delen, oefen.start, false).start;
-    $("#speler").replaceChildren(
-      el("button", { class: "speelknop", disabled: piano === "laden", onclick: speelKnop },
-        piano === "laden" ? "Piano laden…" : speler.speelt ? "■ Stop" : "▶ Speel"),
+    $("#speler").replaceChildren(...[
+      el("button", { class: "speelknop", disabled: laden === "laden", onclick: speelKnop },
+        laden === "laden" ? "Laden…" : speler.speelt ? "■ Stop" : "▶ Speel"),
       el("span", { class: "klein" }, `vanaf maat ${vanaf}`),
       el("div", { class: "wissel tempo" }, [50, 75, 100].map(p => el("button",
         { "aria-pressed": String(p === oefen.tempo), onclick: () => wijzig(() => { oefen.tempo = p; }) },
         `${p}%`))),
+      tellenUit(schema.maatsoort) === 4 ? el("div", { class: "wissel stijl" }, STIJL_NAMEN.map(([k, naam]) =>
+        el("button", { "aria-pressed": String(k === stijl), onclick: () => kiesStijl(k) }, naam))) : null,
       el("button", { class: "stil herhaal", "aria-pressed": String(oefen.herhaal),
         onclick: () => wijzig(() => { oefen.herhaal = !oefen.herhaal; }) },
-        oefen.herhaal ? "🔁 Herhaal dit deel: aan" : "🔁 Herhaal dit deel"));
+        oefen.herhaal ? "🔁 Herhaal dit deel: aan" : "🔁 Herhaal dit deel"),
+    ].filter(Boolean));  // replaceChildren maakt van null de tekst "null"
   }
 
   async function laad(inst) {
@@ -492,6 +561,7 @@ async function paginaSong() {
     document.title = `${s.titel} · BluesLab`;
     if (eersteKeer) {
       eersteKeer = false;
+      if (STIJL_NAMEN.some(([k]) => k === s.stijl)) stijl = s.stijl;  // oude server: geen stijl → shuffle
       zetNavigatie(s.setlist_id, id).catch(() => { /* navigatie is bijzaak */ });
       toonFragment(s, () => { if (speler) speler.stop(); });
       if (speler) {
@@ -500,12 +570,13 @@ async function paginaSong() {
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState !== "hidden") return;
           speler.stop();
-          if (piano === "laden") wegTijdensLaden = true;
+          if (laden === "laden") wegTijdensLaden = true;
         });
       }
     }
     $("#balk-titel").textContent = s.titel;
     $("#instrument").replaceChildren(instrumentKnoppen(laad));
+    fillVak.replaceChildren(fillKnop());
     $("#kop").replaceChildren(...[
       el("h1", {}, s.titel), el("div", { class: "klein" }, s.artiest),
       el("div", { class: "kopinfo" },
@@ -513,11 +584,13 @@ async function paginaSong() {
         el("span", {}, `concert ${mooi(s.concert_key)}`),
         el("span", { class: "sleutel" }, `${INSTRUMENTEN[inst]}: ${mooi(s.geschreven_key)}`)),
       s.status !== "gecontroleerd" ? el("div", { class: "badge" }, "Nog niet gecontroleerd") : null,
+      el("div", { class: "kopknoppen" }, fillVak),
     ].filter(Boolean));  // replaceChildren maakt van null de tekst "null"
 
     const herh = herhalingen(s.delen);
     $("#sprong").replaceChildren(...s.delen.map((d, i) =>
       el("a", { class: "chip", href: `#deel-${i}` }, `${d.naam} ${d.start_maat}`)));
+    fillRegels = {};
     $("#schema").replaceChildren(...s.delen.map((d, i) => {
       const titel = [el("span", { class: "deelnaam" }, d.naam), " ",
         el("span", { class: "klein" }, `maat ${d.start_maat}–${d.eind_maat}`)];
@@ -525,7 +598,7 @@ async function paginaSong() {
         d.wissel ? el("div", { class: "wisselmelding" }, `Toonsoortwissel → ${mooi(d.geschreven_key)}`) : null,
         el("div", { class: "klein" }, `Toonsoort ${mooi(d.geschreven_key)} · ladder `,
           el("span", { class: "ladder" }, d.toonladder.map(mooi).join(" "))),
-        maatRaster(d.maten, kiesStart)];
+        maatRaster(d.maten, tikMaat, fillRegels)];
       const klasse = d.wissel ? "deel wissel-deel" : "deel";
       // Herhaling zonder toonsoortwissel: ingeklapt, met een tik open te klappen.
       if (herh[i] !== null && !d.wissel) {

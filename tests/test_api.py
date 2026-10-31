@@ -370,3 +370,98 @@ def test_schema_bevat_setlist_id(maak):
     sl = _setlist(c)
     sid = _upload(c, sl).json()["id"]
     assert c.get(f"/api/songs/{sid}/schema").json()["setlist_id"] == sl
+
+
+def test_stijl_per_nummer(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "shuffle"
+    assert c.put(f"/api/songs/{sid}/stijl", json={"stijl": "pop"}).json() == {"ok": True}
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "pop"
+    assert c.put(f"/api/songs/{sid}/stijl", json={"stijl": "jazz"}).status_code == 422
+    assert c.put("/api/songs/999/stijl", json={"stijl": "pop"}).status_code == 404
+
+
+def test_stijl_zonder_login_401(maak):
+    assert maak().put("/api/songs/1/stijl", json={"stijl": "pop"}).status_code == 401
+
+
+def test_controleren_laat_stijl_staan(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    c.put(f"/api/songs/{sid}/stijl", json={"stijl": "ballad"})
+    s = c.get(f"/api/songs/{sid}").json()
+    body = {"titel": "Crazy", "artiest": "Lost Frequencies", "tempo": 103, "voortekening": -5,
+            "regels": s["regels"],
+            "delen": [{"naam": "Couplet", "start_maat": 1, "eind_maat": 8, "concert_key": "Bbm",
+                       "key_source": "claude", "solo_geschikt": True}]}
+    assert c.put(f"/api/songs/{sid}", json=body).status_code == 200
+    assert c.get(f"/api/songs/{sid}/schema").json()["stijl"] == "ballad"
+
+
+def _maten(schema):
+    return [m for d in schema["delen"] for m in d["maten"]]
+
+
+def test_fill_bewaren_en_in_schema_per_instrument(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    assert all(m["fill"] is None for m in _maten(c.get(f"/api/songs/{sid}/schema").json()))
+    r = c.put(f"/api/songs/{sid}/fills/2", json={"noten": "D Eb D", "instrument": "bb"})
+    assert r.status_code == 200 and r.json() == {"fill": ["D", "Eb", "D"]}
+    bb = _maten(c.get(f"/api/songs/{sid}/schema?instrument=bb").json())
+    eb = _maten(c.get(f"/api/songs/{sid}/schema?instrument=eb").json())
+    assert (bb[1]["fill"], eb[1]["fill"]) == (["D", "Eb", "D"], ["A", "Bb", "A"])
+    assert bb[0]["fill"] is None
+
+
+def test_fill_getypt_op_alt(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    r = c.put(f"/api/songs/{sid}/fills/1", json={"noten": "A Bb A", "instrument": "eb"})
+    assert r.json() == {"fill": ["A", "Bb", "A"]}
+    assert _maten(c.get(f"/api/songs/{sid}/schema").json())[0]["fill"] == ["D", "Eb", "D"]
+
+
+def test_fill_wissen(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    c.put(f"/api/songs/{sid}/fills/2", json={"noten": "D", "instrument": "bb"})
+    assert c.put(f"/api/songs/{sid}/fills/2", json={"noten": "", "instrument": "bb"}).json() == {"fill": None}
+    assert _maten(c.get(f"/api/songs/{sid}/schema").json())[1]["fill"] is None
+
+
+def test_fill_foute_noot_400_en_oude_blijft(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    c.put(f"/api/songs/{sid}/fills/2", json={"noten": "D", "instrument": "bb"})
+    r = c.put(f"/api/songs/{sid}/fills/2", json={"noten": "D H", "instrument": "bb"})
+    assert r.status_code == 400 and r.json()["detail"] == "Onbekende noot: 'H'."
+    assert _maten(c.get(f"/api/songs/{sid}/schema").json())[1]["fill"] == ["D"]
+
+
+def test_fill_onbekend_nummer_of_maat_404(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    body = {"noten": "D", "instrument": "bb"}
+    assert c.put("/api/songs/999/fills/1", json=body).status_code == 404
+    assert c.put(f"/api/songs/{sid}/fills/0", json=body).status_code == 404
+    assert c.put(f"/api/songs/{sid}/fills/9", json=body).status_code == 404  # 8 maten
+    assert c.put(f"/api/songs/{sid}/fills/8", json=body).status_code == 200
+
+
+def test_fill_zonder_login_401(maak):
+    assert maak().put("/api/songs/1/fills/1", json={"noten": "D", "instrument": "bb"}).status_code == 401
+
+
+def test_controleren_laat_fills_staan(maak):
+    c = _login(maak())
+    sid = _upload(c, _setlist(c)).json()["id"]
+    c.put(f"/api/songs/{sid}/fills/3", json={"noten": "F E", "instrument": "bb"})
+    s = c.get(f"/api/songs/{sid}").json()
+    body = {"titel": "Crazy", "artiest": "Lost Frequencies", "tempo": 103, "voortekening": -5,
+            "regels": s["regels"],
+            "delen": [{"naam": "Couplet", "start_maat": 1, "eind_maat": 8, "concert_key": "Bbm",
+                       "key_source": "claude", "solo_geschikt": True}]}
+    assert c.put(f"/api/songs/{sid}", json=body).status_code == 200
+    assert _maten(c.get(f"/api/songs/{sid}/schema").json())[2]["fill"] == ["F", "E"]

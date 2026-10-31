@@ -22,7 +22,7 @@ from core.analysis import (
     check_bar_count, check_sections, detect_sections, flatten, key_dict,
     key_for_section, parse_key, same_key, speelschema, written_key_name,
 )
-from core.chords import parse_chord
+from core.chords import fill_names, parse_chord, parse_fill
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_PDF = 10 * 1024 * 1024
@@ -64,6 +64,15 @@ class Controle(BaseModel):
     voortekening: int = 0
     regels: list[Regel]
     delen: list[Deel]
+
+
+class Stijl(BaseModel):
+    stijl: Literal["shuffle", "pop", "ballad", "funk"]
+
+
+class Fill(BaseModel):
+    noten: str
+    instrument: Literal["bb", "eb"] = "bb"
 
 
 def engine_key(maten: list, voortekening: int) -> dict:
@@ -326,6 +335,27 @@ def maak_app(instellingen: dict = None) -> FastAPI:
         Path(pad).unlink(missing_ok=True)
         return {"ok": True}
 
+    @api.put("/songs/{song_id}/stijl")
+    def zet_stijl(song_id: int, body: Stijl, conn=Depends(conn_dep)):
+        if not db.zet_stijl(conn, song_id, body.stijl):
+            raise HTTPException(404, "Nummer niet gevonden.")
+        return {"ok": True}
+
+    @api.put("/songs/{song_id}/fills/{nr}")
+    def zet_fill(song_id: int, nr: int, body: Fill, conn=Depends(conn_dep)):
+        s = db.song(conn, song_id)
+        if not s:
+            raise HTTPException(404, "Nummer niet gevonden.")
+        if not 1 <= nr <= len(flatten(s["regels"])):
+            raise HTTPException(404, "Maat niet gevonden.")
+        voice = VOICE[body.instrument]
+        try:
+            noten = parse_fill(body.noten, voice)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        db.zet_fill(conn, song_id, nr, noten)
+        return {"fill": fill_names(noten, voice) if noten else None}
+
     @api.get("/songs/{song_id}/schema")
     def schema(song_id: int, instrument: Literal["bb", "eb"] = "bb", conn=Depends(conn_dep)):
         s = db.song(conn, song_id)
@@ -333,10 +363,16 @@ def maak_app(instellingen: dict = None) -> FastAPI:
             raise HTTPException(404, "Nummer niet gevonden.")
         voice = VOICE[instrument]
         delen = speelschema(flatten(s["regels"]), s["delen"], voice)
+        fills = db.fills(conn, song_id)
+        for d in delen:
+            for m in d["maten"]:
+                noten = fills.get(m["nr"])
+                m["fill"] = fill_names(noten, voice) if noten else None
         return {
             "id": s["id"], "setlist_id": s["setlist_id"],
             "titel": s["titel"], "artiest": s["artiest"], "tempo": s["tempo"],
             "maatsoort": s["maatsoort"], "status": s["status"], "instrument": instrument,
+            "stijl": s["stijl"],
             "concert_key": delen[0]["concert_key"] if delen else None,
             "geschreven_key": delen[0]["geschreven_key"] if delen else None,
             "delen": delen,

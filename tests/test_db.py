@@ -66,3 +66,114 @@ def test_unicode_akkoorden_bewaard(conn):
     sid = db.maak_song(conn, sl, "/x.pdf", KOP, [{"start_maat": 1, "maten": [["B♭m"]]}],
                        [dict(DELEN[0], eind_maat=1)])
     assert db.song(conn, sid)["regels"][0]["maten"] == [["B♭m"]]
+
+
+OUD_SONG = """CREATE TABLE song (
+    id INTEGER PRIMARY KEY, setlist_id INTEGER NOT NULL, positie INTEGER NOT NULL,
+    titel TEXT NOT NULL, artiest TEXT NOT NULL DEFAULT '', pdf_path TEXT NOT NULL, tempo INTEGER,
+    maatsoort TEXT NOT NULL DEFAULT '4/4', voortekening INTEGER NOT NULL DEFAULT 0,
+    regelstarts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'gelezen')"""
+
+
+def test_migratie_voegt_stijl_toe_aan_oude_database(tmp_path):
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute("CREATE TABLE setlist (id INTEGER PRIMARY KEY, naam TEXT NOT NULL,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    oud.execute(OUD_SONG)
+    oud.execute("INSERT INTO setlist (id, naam) VALUES (1, 'Next week')")
+    oud.execute("INSERT INTO song (id, setlist_id, positie, titel, pdf_path, tempo)"
+                " VALUES (1, 1, 1, 'Spooky', '/x.pdf', 107)")
+    oud.commit()
+    oud.close()
+    c = db.verbind(pad)
+    s = db.song(c, 1)
+    assert (s["titel"], s["tempo"], s["stijl"]) == ("Spooky", 107, "shuffle")
+    c.close()
+    db.verbind(pad).close()  # tweede start: kolom bestaat al, geen fout
+
+
+def test_zet_stijl(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    assert db.song(conn, sid)["stijl"] == "shuffle"
+    assert db.zet_stijl(conn, sid, "funk") is True
+    assert db.song(conn, sid)["stijl"] == "funk"
+    assert db.zet_stijl(conn, 999, "pop") is False
+
+
+def test_migratie_tegelijk_gestart_geen_fout(tmp_path, monkeypatch):
+    # Twee verzoeken na de herstart: beide zien "geen kolom stijl", de ander voegt hem net eerder toe.
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute(OUD_SONG)
+    oud.close()
+
+    class Laat(sqlite3.Connection):
+        def execute(self, sql, *a):
+            r = super().execute(sql, *a)
+            if sql.startswith("PRAGMA table_info"):
+                rijen = r.fetchall()
+                ander = sqlite3.connect(pad)
+                ander.execute("ALTER TABLE song ADD COLUMN stijl TEXT NOT NULL DEFAULT 'shuffle'")
+                ander.commit()
+                ander.close()
+                return rijen
+            return r
+
+    echt = sqlite3.connect
+    monkeypatch.setattr(db.sqlite3, "connect", lambda p, **k: echt(p, factory=Laat, **k))
+    db.verbind(pad).close()
+
+
+def test_zet_fill_en_lees(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    assert db.fills(conn, sid) == {}
+    assert db.zet_fill(conn, sid, 2, [[2, 1], [3, 2]]) is True
+    assert db.zet_fill(conn, sid, 3, [[0, 0]]) is True
+    assert db.fills(conn, sid) == {2: [[2, 1], [3, 2]], 3: [[0, 0]]}
+    db.zet_fill(conn, sid, 2, [[7, 4]])  # overschrijven
+    assert db.fills(conn, sid)[2] == [[7, 4]]
+
+
+def test_zet_fill_leeg_wist(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    db.zet_fill(conn, sid, 2, [[2, 1]])
+    assert db.zet_fill(conn, sid, 2, []) is True
+    assert db.fills(conn, sid) == {}
+
+
+def test_zet_fill_onbekend_nummer(conn):
+    assert db.zet_fill(conn, 999, 1, [[2, 1]]) is False
+
+
+def test_fills_overleven_controle_en_gaan_mee_bij_verwijderen(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    db.zet_fill(conn, sid, 1, [[2, 1]])
+    db.werk_song_bij(conn, sid, KOP, REGELS, DELEN)  # schrijft alle maten opnieuw weg
+    assert db.fills(conn, sid) == {1: [[2, 1]]}
+    db.verwijder_song(conn, sid)
+    assert conn.execute("SELECT COUNT(*) FROM fill").fetchone()[0] == 0
+
+
+def test_oude_database_krijgt_fill_tabel(tmp_path):
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute("CREATE TABLE setlist (id INTEGER PRIMARY KEY, naam TEXT NOT NULL,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    oud.execute(OUD_SONG)
+    oud.execute("INSERT INTO setlist (id, naam) VALUES (1, 'Next week')")
+    oud.execute("INSERT INTO song (id, setlist_id, positie, titel, pdf_path, tempo)"
+                " VALUES (1, 1, 1, 'Spooky', '/x.pdf', 107)")
+    oud.commit()
+    oud.close()
+    c = db.verbind(pad)
+    assert db.zet_fill(c, 1, 40, [[2, 1], [3, 2], [2, 1]]) is True
+    assert db.fills(c, 1) == {40: [[2, 1], [3, 2], [2, 1]]}
+    c.close()

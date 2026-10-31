@@ -41,7 +41,15 @@ prototypes) gaan meteen de repo in en worden gecommit — nooit alleen in de scr
 - **Meespelen met piano en shuffle**: spec `docs/superpowers/specs/2026-10-16-piano-shuffle-design.md`,
   plan `docs/superpowers/plans/2026-10-16-piano-shuffle.md`. Salamander-samples in `web/piano/`
   (opnieuw maken: `scripts/piano-samples.sh`), geladen bij de eerste ▶. *Status: gebouwd (2026-10-16), branch `bl-2-site`.*
-- Later: mooier geluid (samples), drums/shuffle, live meeluisteren (mic), feedback na de repetitie, LLM-coaching, sessielog.
+- **Stijlen per nummer met drums** (Shuffle · Pop · Ballad · Funk): spec
+  `docs/superpowers/specs/2026-10-16-stijlen-drums-design.md`, plan `docs/superpowers/plans/2026-10-16-stijlen-drums.md`.
+  Patronen = tabellen `STIJLEN` in `web/speler.js`; stijl per nummer in `song.stijl` (`PUT /api/songs/{id}/stijl`).
+  *Status: gebouwd (2026-10-16), branch `stijlen-drums`.*
+- **Blazersfills per maat** (aanpasbaar; concert `[pc, letter]` in tabel `fill`, los van `bar`): spec
+  `docs/superpowers/specs/2026-10-31-fills-design.md`, plan `docs/superpowers/plans/2026-10-31-fills.md`.
+  Bewerkstand "✎ Fills bewerken" op de songpagina; `PUT /api/songs/{id}/fills/{nr}`.
+  *Status: gebouwd (2026-10-31), branch `fills`.*
+- Later: live meeluisteren (mic), feedback na de repetitie, LLM-coaching, sessielog.
 
 ## Valkuilen
 - `find ~` bevriest op orin3 → gebruik `ls <pad>`.
