@@ -412,6 +412,13 @@ def test_bewerkstand_tijdens_spelen_herstart_niet():
     assert r["starts"] == 1
 
 
+def test_bewerkstand_tijdens_spelen_stopt_voor_het_invulvenster():
+    # prompt() blokkeert de klok van de Speler terwijl de audioklok doorloopt: na het typen
+    # zouden alle gemiste noten tegelijk klinken (review). Daarom eerst stoppen.
+    r = _bewerk("tekst=▶ Speel", "tekst=✎ Fills bewerken", "data-nr=3", BLUESLAB_PROMPT="D")
+    assert r["speelknop"]["tekst"] == "▶ Speel"
+
+
 def test_bewerkstand_annuleren_stuurt_niets():
     r = _bewerk("tekst=✎ Fills bewerken", "data-nr=3")  # geen BLUESLAB_PROMPT = Annuleren
     assert len(r["prompts"]) == 1 and r["puts"] == []

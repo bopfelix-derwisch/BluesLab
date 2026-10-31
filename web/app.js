@@ -476,6 +476,9 @@ async function paginaSong() {
     const m = schema.delen.flatMap(d => d.maten).find(x => x.nr === nr);
     if (!m) return;
     const inst = schema.instrument;
+    // prompt() houdt de klok van de Speler stil terwijl de audioklok doorloopt; daarna zouden
+    // alle gemiste noten tegelijk klinken. Dus eerst stoppen.
+    if (speler && speler.speelt) speler.stop();
     const tekst = prompt(`Fill maat ${nr} (geschreven voor ${INSTRUMENTEN[inst]}), bv. F E:`,
       (m.fill || []).join(" "));
     if (tekst === null) return;  // Annuleren
