@@ -446,3 +446,22 @@ def test_herhalingen_andere_fills_klapt_niet_in():
 def test_hulptekst_noemt_fills():
     html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
     assert "✎ Fills bewerken" in html
+
+
+def test_fills_knop_alleen_met_fills():
+    assert "♪ Fills meespelen: aan" in _bewerk(schema=_met_fill(SCHEMA, m1=["E"]))["knoppen"]
+    assert not any("Fills meespelen" in k for k in _bewerk()["knoppen"] if k)
+
+
+def test_speel_geeft_fills_en_transpositie_door():
+    r = _bewerk("tekst=▶ Speel", schema=_met_fill(SCHEMA, m1=["E", "F", "E"]))
+    assert (r["plannen"][0]["fills"], r["plannen"][0]["transpositie"]) == (True, 2)
+    r = _bewerk("tekst=▶ Speel", schema=dict(_met_fill(SCHEMA, m1=["B"]), instrument="eb"))
+    assert r["plannen"][0]["transpositie"] == 9
+
+
+def test_fills_uitzetten_tijdens_spelen_herstart_zonder_fills():
+    r = _bewerk("tekst=▶ Speel", "tekst=♪ Fills meespelen: aan", schema=_met_fill(SCHEMA, m1=["E"]))
+    assert r["starts"] == 2
+    assert r["plannen"][-1]["fills"] is False
+    assert "♪ Fills meespelen" in r["knoppen"]

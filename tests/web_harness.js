@@ -106,7 +106,8 @@ if (process.env.BLUESLAB_AUDIO === "1") {
       decodeAudioData: async () => ({}),
       createGain: () => nepKnoop({ gain: nepParam() }),
       createBufferSource: () => nepKnoop({ playbackRate: {}, start() {}, stop() {} }),
-      createOscillator: () => nepKnoop({ frequency: {}, start() {}, stop() {} }) };
+      createOscillator: () => nepKnoop({ frequency: {}, start() {}, stop() {} }),
+      createBiquadFilter: () => nepKnoop({ frequency: {}, Q: {} }) };
   };
 }
 vm.createContext(ctx);

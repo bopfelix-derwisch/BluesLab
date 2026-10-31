@@ -417,6 +417,7 @@ async function toonFragment(s, bijAfspelen) {
   teken();
 }
 
+const TRANSPOSITIE = { bb: 2, eb: 9 };  // geschreven - klinkend, in halve tonen
 const STIJL_NAMEN = [["shuffle", "Shuffle"], ["pop", "Pop"], ["ballad", "Ballad"], ["funk", "Funk"]];
 
 async function paginaSong() {
@@ -425,7 +426,7 @@ async function paginaSong() {
   houdSchermAan();
   let eersteKeer = true;
   let schema = null;
-  const oefen = { start: null, tempo: 100, herhaal: false };
+  const oefen = { start: null, tempo: 100, herhaal: false, fills: true };
   const speler = kanSpelen() ? new Speler({ opMaat: zetCursor, opKlaar: () => tekenSpeler() }) : null;
   // Samples: één laadpoging per pagina (nieuw → laden → klaar); piano en drums los van elkaar.
   let laden = "nieuw";
@@ -526,9 +527,10 @@ async function paginaSong() {
     const tellen = tellenUit(schema.maatsoort);
     const bpm = (schema.tempo || 100) * oefen.tempo / 100;
     const b = speelBereik(schema.delen, oefen.start, oefen.herhaal);
-    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind, stijl, drums: drumsGeladen }),
+    const fills = { fills: oefen.fills, transpositie: TRANSPOSITIE[schema.instrument] };
+    speler.start(speelplan(maten, { bpm, tellen, start: b.start, eind: b.eind, stijl, drums: drumsGeladen, ...fills }),
       oefen.herhaal ? speelplan(maten, { bpm, tellen, start: b.lusStart, eind: b.eind, inteltel: 0,
-        stijl, drums: drumsGeladen }) : null);
+        stijl, drums: drumsGeladen, ...fills }) : null);
     tekenSpeler();
   }
 
@@ -552,6 +554,9 @@ async function paginaSong() {
       el("button", { class: "stil herhaal", "aria-pressed": String(oefen.herhaal),
         onclick: () => wijzig(() => { oefen.herhaal = !oefen.herhaal; }) },
         oefen.herhaal ? "🔁 Herhaal dit deel: aan" : "🔁 Herhaal dit deel"),
+      schema.delen.some(d => d.maten.some(m => m.fill)) ? el("button", { class: "stil fillsaan",
+        "aria-pressed": String(oefen.fills), onclick: () => wijzig(() => { oefen.fills = !oefen.fills; }) },
+        oefen.fills ? "♪ Fills meespelen: aan" : "♪ Fills meespelen") : null,
     ].filter(Boolean));  // replaceChildren maakt van null de tekst "null"
   }
 

@@ -165,12 +165,49 @@ function rechteMaat(akk, tellen, begin, tel, maat) {
   return g;
 }
 
+// Fill (geschreven namen, bv. ["E", "F", "E"]) -> concert-midi. transpositie = geschreven - klinkend
+// in halve tonen (klarinet 2, alt 9). Eerste noot tussen C4 en B4, daarna steeds de dichtstbijzijnde
+// octaaf bij de vorige noot (hooguit een tritonus omlaag). Onleesbare namen vallen weg.
+function fillMidi(namen, transpositie) {
+  const uit = [];
+  for (const naam of namen) {
+    const n = leesNoot(naam);
+    if (!n || n[1]) continue;
+    const pc = ((n[0] - transpositie) % 12 + 12) % 12;
+    if (!uit.length) { uit.push(60 + pc); continue; }
+    const vorige = uit[uit.length - 1];
+    let m = vorige - ((vorige - pc) % 12 + 12) % 12;  // hoogste noot met deze pc, niet boven de vorige
+    if (vorige - m > 6) m += 12;
+    uit.push(m);
+  }
+  return uit;
+}
+
+const FILL_DUUR = 0.9;  // deel van een achtste/zestiende: net los van elkaar
+
+// Fill in een maat: het ritme is niet bewaard, dus achtsten die op het eind van de maat uitkomen
+// (antwoord op de zin); past dat niet, dan zestienden, en wat dan nog niet past valt weg.
+// swing: achtsten op de shuffle-plek (zoals de begeleiding).
+function fillMaat(midi, begin, tel, tellen, maat, swing) {
+  const achtsten = midi.length <= tellen * 2;
+  const stap = achtsten ? 2 : 1;  // in zestienden
+  const noten = midi.slice(0, tellen * 4 / stap);
+  const tijden = noten.map((m, j) => {
+    const p = tellen * 4 - (noten.length - j) * stap;
+    return begin + (achtsten && swing ? posTel(p, true) : p / 4) * tel;
+  });
+  tijden.push(begin + tellen * tel);  // elke noot stopt voor de volgende (of de maatstreep)
+  return noten.map((m, j) => ({ t: tijden[j], soort: "fill", midi: [m],
+    duur: FILL_DUUR * (tijden[j + 1] - tijden[j]), maat }));
+}
+
 // Schema-maten -> {gebeurtenissen: [{t, soort, midi, duur, maat, sterkte}], duur} in seconden.
 // start/eind: maatnummers (inclusief). inteltel: tikken vooraf (maat null).
 // stijl: recht of een sleutel uit STIJLEN (die alleen bij 4 tellen; anders recht).
 // drums: drumregels i.p.v. de tik tijdens het spelen (alleen in een tabelstijl).
+// fills: de fill van een maat (m.fill, geschreven namen) meespelen; transpositie zie fillMidi.
 function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity, inteltel = tellen,
-  stijl = "recht", drums = false }) {
+  stijl = "recht", drums = false, fills = false, transpositie = 0 }) {
   const tel = 60 / bpm;
   const pat = tellen === 4 ? STIJLEN[stijl] : undefined;
   const g = [];
@@ -180,7 +217,9 @@ function speelplan(maten, { bpm, tellen = 4, start = -Infinity, eind = Infinity,
     const begin = (inteltel + mi * tellen) * tel;
     const akk = m.akkoorden.map(a => akkoordMidi(a.concert));
     g.push(...(pat ? stijlMaat(pat, akk, begin, tel, m.nr, drums) : rechteMaat(akk, tellen, begin, tel, m.nr)));
+    if (fills && m.fill) g.push(...fillMaat(fillMidi(m.fill, transpositie), begin, tel, tellen, m.nr, Boolean(pat && pat.swing)));
   });
+  if (fills) g.sort((a, b) => a.t - b.t);  // de Speler plant op volgorde; sort is stabiel
   return { gebeurtenissen: g, duur: (inteltel + gekozen.length * tellen) * tel };
 }
 
@@ -275,6 +314,7 @@ function maakGeluid({ piano = null, drums = null } = {}) {
       else speelGeluid(ctx, e, wanneer, uit);
       return;
     }
+    if (e.soort === "fill") { blazerGeluid(ctx, e, wanneer, uit); return; }
     if (e.soort in DRUMSTERKTE) {
       if (drums) speelBuffer(ctx, drums[e.soort], 1, DRUMSTERKTE[e.soort] * s, wanneer, null, uit);
       return;
@@ -289,6 +329,29 @@ function maakGeluid({ piano = null, drums = null } = {}) {
 }
 
 const pianoGeluid = buffers => maakGeluid({ piano: buffers });
+
+// Fill: een eigen blazerachtige klank (zaagtand door een laagdoorlaatfilter), los van de piano.
+const FILL_STERKTE = 0.2;  // goed te horen: gemeten 2,5-6 dB onder de begeleiding, piek niet hoger
+function blazerGeluid(ctx, e, wanneer, uit) {
+  const s = FILL_STERKTE * (e.sterkte === undefined ? 1 : e.sterkte);
+  for (const m of e.midi) {
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const vol = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.value = hz(m);
+    filter.type = "lowpass";
+    filter.frequency.value = 1800;
+    filter.Q.value = 1;
+    vol.gain.setValueAtTime(0.0001, wanneer);
+    vol.gain.linearRampToValueAtTime(s, wanneer + 0.02);
+    vol.gain.setValueAtTime(s, wanneer + Math.max(0.02, e.duur - 0.04));
+    vol.gain.linearRampToValueAtTime(0.0001, wanneer + e.duur);
+    osc.connect(filter).connect(vol).connect(uit);
+    osc.start(wanneer);
+    osc.stop(wanneer + e.duur + 0.02);
+  }
+}
 
 // Speelt een speelplan op de AudioContext-klok; `herhaal` volgt daarna eindeloos.
 class Speler {

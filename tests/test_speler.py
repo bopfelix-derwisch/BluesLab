@@ -452,3 +452,91 @@ def test_synth_volgt_sterkte():
            " speelGeluid(ctx, {soort: 'akkoord', midi: [60], duur: 0.3, maat: 1, sterkte: 0.5}, 0, {});"
            " return pieken; })()")
     assert r[1] == r[0] / 2
+
+
+# --- Fills meespelen -------------------------------------------------------------
+
+@pytest.mark.parametrize("namen, transpositie, midi", [
+    (["E", "F", "E"], 2, [62, 63, 62]),       # klarinet: concert D Eb D rond C4-B4
+    (["B", "C", "B"], 9, [62, 63, 62]),       # alt: zelfde concert
+    (["A", "D"], 2, [67, 72]),                # concert G -> C: dichtstbij (kwart omhoog)
+    (["D#"], 2, [61]),
+    (["X", "E", "Dm"], 2, [62]),              # onleesbaar overslaan
+    ([], 2, []),
+])
+def test_fill_midi(namen, transpositie, midi):
+    assert js(f"fillMidi({json.dumps(namen)}, {transpositie})") == midi
+
+
+def _fillmaten(fill, akkoord="C"):
+    m = _maten(akkoord)
+    m[0]["fill"] = fill
+    return m
+
+
+RECHT_FILLS = {"bpm": 120, "inteltel": 0, "fills": True, "transpositie": 2}  # tel 500 ms
+
+
+def test_speelplan_fill_achtsten_aan_het_eind_van_de_maat():
+    g, duur = plan(_fillmaten(["E", "F", "E"]), RECHT_FILLS)
+    assert [x for x in g if x[1] == "fill"] == [
+        [1250, "fill", [62], 1], [1500, "fill", [63], 1], [1750, "fill", [62], 1]]
+    assert duur == 2000
+
+
+def test_speelplan_fill_duur_net_korter_dan_een_achtste():
+    r = js(f"speelplan({json.dumps(_fillmaten(['E']))}, {json.dumps(RECHT_FILLS)})"
+           ".gebeurtenissen.filter(e => e.soort === 'fill').map(e => Math.round(e.duur * 1000))")
+    assert r == [225]
+
+
+def test_speelplan_zonder_fills_optie_geen_fill():
+    g, _ = plan(_fillmaten(["E", "F", "E"]), {"bpm": 120, "inteltel": 0})
+    assert all(x[1] != "fill" for x in g)
+
+
+def test_speelplan_fill_negen_noten_zestienden():
+    g, _ = plan(_fillmaten(["E"] * 9), RECHT_FILLS)
+    assert [x[0] for x in g if x[1] == "fill"] == [875 + 125 * i for i in range(9)]
+
+
+def test_speelplan_fill_te_lang_eerste_zestien():
+    g, _ = plan(_fillmaten(["C"] * 10 + ["E"] * 10), RECHT_FILLS)
+    f = [x for x in g if x[1] == "fill"]
+    assert len(f) == 16 and f[0][0] == 0 and f[-1][2] == [74]  # 10× C (Bb4 = 70), dan E (D5 dichtstbij)
+
+
+def test_speelplan_fill_swingt_in_shuffle():
+    g, _ = plan(_fillmaten(["E", "F"]), {**SHUF, "fills": True, "transpositie": 2})
+    assert [x[0] for x in g if x[1] == "fill"] == [1800, 2200]
+
+
+def test_speelplan_fill_drie_kwart():
+    g, _ = plan(_fillmaten(["E", "F", "E"]), {**RECHT_FILLS, "tellen": 3})
+    assert [x[0] for x in g if x[1] == "fill"] == [750, 1000, 1250]
+
+
+@pytest.mark.parametrize("stijl", ["recht", "pop", "funk", "shuffle"])
+def test_speelplan_met_fills_gesorteerd_op_tijd(stijl):
+    maten = _fillmaten(["E", "F", "E", "D", "C"]) + _maten("G", eerste=2)
+    g, _ = plan(maten, {**RECHT_FILLS, "inteltel": 4, "stijl": stijl, "drums": True})
+    tijden = [x[0] for x in g]
+    assert tijden == sorted(tijden)
+    assert [x[3] for x in g if x[1] == "fill"] == [1] * 5
+
+
+def test_maak_geluid_fill_blazersynth_ook_met_piano():
+    r = js(NEP_GELUID + " let filters = 0; ctx.createBiquadFilter = () => { filters += 1;"
+           " return knoop({type: '', frequency: {value: 0}, Q: {value: 0}}); };"
+           " const types = []; const osc = ctx.createOscillator;"
+           " ctx.createOscillator = () => { const o = osc(); types.push(o); return o; };"
+           " maakGeluid({piano: {60: 'P'}, drums: DR})(ctx, {soort: 'fill', midi: [62], duur: 0.2, maat: 1}, 1, {});"
+           " return {bronnen: bronnen.length, oscs, filters, type: types[0].type}; })()")
+    assert r == {"bronnen": 0, "oscs": 1, "filters": 1, "type": "sawtooth"}
+
+
+def test_speelplan_fill_in_shuffle_niet_over_de_volgende_tel():
+    # Geswingde achtsten: lang (2/3 tel) en kort (1/3 tel); de laatste noot stopt voor de maatstreep.
+    r = js(f"speelplan({json.dumps(_fillmaten(['E', 'F']))}, {json.dumps({**SHUF, 'fills': True, 'transpositie': 2})})"
+           ".gebeurtenissen.filter(e => e.soort === 'fill').map(e => Math.round(e.duur * 1000))")
+    assert r == [360, 180]

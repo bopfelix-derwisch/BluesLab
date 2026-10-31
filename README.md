@@ -64,6 +64,8 @@ Drums: het akoestische drumstel uit Google Chrome Labs `web-audio-samples` (Apac
 Blazersfills: met **✎ Fills bewerken** tik je op een maat en typ je de fill zoals je hem speelt
 (bv. `F E`). BluesLab bewaart hem in concert en toont hem per maat geschreven voor Bes klarinet of
 alt sax (`♪ E–F–E`).
+**♪ Fills meespelen** laat ze in de begeleiding meeklinken met een eigen blazerklank: het ritme is niet
+bewaard, dus als achtsten die op het eind van de maat uitkomen (zestienden als het er meer dan acht zijn).
 
 ```bash
 # Eenmalig
