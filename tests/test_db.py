@@ -126,3 +126,54 @@ def test_migratie_tegelijk_gestart_geen_fout(tmp_path, monkeypatch):
     echt = sqlite3.connect
     monkeypatch.setattr(db.sqlite3, "connect", lambda p, **k: echt(p, factory=Laat, **k))
     db.verbind(pad).close()
+
+
+def test_zet_fill_en_lees(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    assert db.fills(conn, sid) == {}
+    assert db.zet_fill(conn, sid, 2, [[2, 1], [3, 2]]) is True
+    assert db.zet_fill(conn, sid, 3, [[0, 0]]) is True
+    assert db.fills(conn, sid) == {2: [[2, 1], [3, 2]], 3: [[0, 0]]}
+    db.zet_fill(conn, sid, 2, [[7, 4]])  # overschrijven
+    assert db.fills(conn, sid)[2] == [[7, 4]]
+
+
+def test_zet_fill_leeg_wist(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    db.zet_fill(conn, sid, 2, [[2, 1]])
+    assert db.zet_fill(conn, sid, 2, []) is True
+    assert db.fills(conn, sid) == {}
+
+
+def test_zet_fill_onbekend_nummer(conn):
+    assert db.zet_fill(conn, 999, 1, [[2, 1]]) is False
+
+
+def test_fills_overleven_controle_en_gaan_mee_bij_verwijderen(conn):
+    sl = db.maak_setlist(conn, "Next week")
+    sid = db.maak_song(conn, sl, "/x.pdf", KOP, REGELS, DELEN)
+    db.zet_fill(conn, sid, 1, [[2, 1]])
+    db.werk_song_bij(conn, sid, KOP, REGELS, DELEN)  # schrijft alle maten opnieuw weg
+    assert db.fills(conn, sid) == {1: [[2, 1]]}
+    db.verwijder_song(conn, sid)
+    assert conn.execute("SELECT COUNT(*) FROM fill").fetchone()[0] == 0
+
+
+def test_oude_database_krijgt_fill_tabel(tmp_path):
+    import sqlite3
+    pad = str(tmp_path / "oud.sqlite")
+    oud = sqlite3.connect(pad)
+    oud.execute("CREATE TABLE setlist (id INTEGER PRIMARY KEY, naam TEXT NOT NULL,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+    oud.execute(OUD_SONG)
+    oud.execute("INSERT INTO setlist (id, naam) VALUES (1, 'Next week')")
+    oud.execute("INSERT INTO song (id, setlist_id, positie, titel, pdf_path, tempo)"
+                " VALUES (1, 1, 1, 'Spooky', '/x.pdf', 107)")
+    oud.commit()
+    oud.close()
+    c = db.verbind(pad)
+    assert db.zet_fill(c, 1, 40, [[2, 1], [3, 2], [2, 1]]) is True
+    assert db.fills(c, 1) == {40: [[2, 1], [3, 2], [2, 1]]}
+    c.close()

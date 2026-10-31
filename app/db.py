@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS section (
     solo_geschikt INTEGER NOT NULL DEFAULT 0,
     reden TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS fill (
+    song_id INTEGER NOT NULL REFERENCES song(id) ON DELETE CASCADE,
+    nr INTEGER NOT NULL,
+    noten TEXT NOT NULL,
+    PRIMARY KEY (song_id, nr)
+);
 """
 
 
@@ -153,6 +159,29 @@ def zet_stijl(conn, song_id: int, stijl: str) -> bool:
     """Begeleidingsstijl van een nummer; False als het nummer niet bestaat."""
     with conn:
         return conn.execute("UPDATE song SET stijl = ? WHERE id = ?", (stijl, song_id)).rowcount > 0
+
+
+def zet_fill(conn, song_id: int, nr: int, noten: list) -> bool:
+    """Blazersfill van één maat (concert [[pc, letter], ...]); [] wist hem.
+
+    Los van de tabel bar, zodat een controle (alle maten opnieuw) de fills laat staan.
+    False als het nummer niet bestaat.
+    """
+    with conn:
+        if not conn.execute("SELECT 1 FROM song WHERE id = ?", (song_id,)).fetchone():
+            return False
+        if noten:
+            conn.execute("INSERT OR REPLACE INTO fill (song_id, nr, noten) VALUES (?,?,?)",
+                         (song_id, nr, json.dumps(noten)))
+        else:
+            conn.execute("DELETE FROM fill WHERE song_id = ? AND nr = ?", (song_id, nr))
+    return True
+
+
+def fills(conn, song_id: int) -> dict:
+    """{maatnummer: [[pc, letter], ...]} (concert) voor een nummer."""
+    return {r["nr"]: json.loads(r["noten"])
+            for r in conn.execute("SELECT nr, noten FROM fill WHERE song_id = ?", (song_id,))}
 
 
 def songs(conn, setlist_id: int) -> list:
