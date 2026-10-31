@@ -1,6 +1,6 @@
 # BluesLab — blazersfills per maat
 
-**Datum:** 2026-10-31 · **Status:** ontwerp · **Bouwt op:** stijlen per nummer (`2026-10-16-stijlen-drums-design.md`, branch `stijlen-drums`)
+**Datum:** 2026-10-31 · **Status:** gebouwd (2026-10-31) · **Bouwt op:** stijlen per nummer (`2026-10-16-stijlen-drums-design.md`, branch `stijlen-drums`)
 
 ## 1. Doel
 

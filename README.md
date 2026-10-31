@@ -61,6 +61,10 @@ eenvoudige synth.
 Drums: het akoestische drumstel uit Google Chrome Labs `web-audio-samples` (Apache-2.0, licentie in
 `web/drums/`), verkleind met `scripts/drum-samples.sh`. Lukken de drums niet, dan klinkt een tik.
 
+Blazersfills: met **✎ Fills bewerken** tik je op een maat en typ je de fill zoals je hem speelt
+(bv. `F E`). BluesLab bewaart hem in concert en toont hem per maat geschreven voor Bes klarinet of
+alt sax (`♪ E–F–E`).
+
 ```bash
 # Eenmalig
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt

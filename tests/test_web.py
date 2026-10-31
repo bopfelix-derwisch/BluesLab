@@ -355,3 +355,87 @@ def test_piano_mislukt_drums_wel():
 def test_hulptekst_noemt_drums():
     html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
     assert "Google Chrome Labs" in html and "Apache-2.0" in html
+
+
+# --- Blazersfills ---------------------------------------------------------------
+
+def _met_fill(schema, **fills):
+    """Kopie van een schema met fills per maat, bv. _met_fill(SCHEMA, m3=["F", "E"])."""
+    s = json.loads(json.dumps(schema))
+    for d in s["delen"]:
+        for m in d["maten"]:
+            m["fill"] = fills.get(f"m{m['nr']}")
+    return s
+
+
+def _bewerk(*acties, schema=None, put=None, audio=True, **env):
+    fixtures = {"/api/songs/1/fills/": put or {"fill": ["D", "D#", "E"]},  # vóór "/api/songs/"
+                "/api/songs/": schema or _met_fill(SCHEMA), "/api/setlists/": SETLIST}
+    return draai("song", 200, "?id=1", fixtures, audio=audio, acties=acties, env=env)
+
+
+def test_fill_tekst():
+    assert js('fillTekst(["E", "F", "E"])') == "♪ E–F–E"
+    assert js('fillTekst(["D#", "Eb"])') == "♪ D♯–E♭"
+    assert js("fillTekst(null)") == "" and js("fillTekst([])") == ""
+
+
+def test_fill_regel_getekend():
+    r = _bewerk(schema=_met_fill(SCHEMA, m1=["E", "F", "E"]))
+    assert r["fills"].count("♪ E–F–E") == 1
+    assert r["fills"].count("") == 5  # elk ander maatvak een lege (verborgen) regel
+    assert r["nullKinderen"] == 0
+
+
+def test_fill_knop_ook_zonder_web_audio():
+    assert "✎ Fills bewerken" in _bewerk(audio=False)["knoppen"]
+
+
+def test_bewerkstand_tik_vraagt_fill_en_bewaart():
+    r = _bewerk("tekst=✎ Fills bewerken", "data-nr=3", BLUESLAB_PROMPT="D D# E")
+    assert r["prompts"] == [["Fill maat 3 (geschreven voor Bes klarinet), bv. F E:", ""]]
+    assert r["puts"] == [["/api/songs/1/fills/3", '{"noten":"D D# E","instrument":"bb"}']]
+    assert "♪ D–D♯–E" in r["fills"]
+    assert "✎ Klaar" in r["knoppen"]
+
+
+def test_bewerkstand_toont_huidige_fill_en_instrument():
+    schema = dict(_met_fill(SCHEMA, m3=["F", "E"]), instrument="eb")
+    r = _bewerk("tekst=✎ Fills bewerken", "data-nr=3", schema=schema, BLUESLAB_PROMPT="F E")
+    assert r["prompts"] == [["Fill maat 3 (geschreven voor Alt sax), bv. F E:", "F E"]]
+    assert r["puts"][0][1] == '{"noten":"F E","instrument":"eb"}'
+
+
+def test_bewerkstand_tijdens_spelen_herstart_niet():
+    # Buiten de bewerkstand herstart een tik de begeleiding vanaf die maat (starts 2).
+    r = _bewerk("tekst=▶ Speel", "tekst=✎ Fills bewerken", "data-nr=3", BLUESLAB_PROMPT="D")
+    assert r["starts"] == 1
+
+
+def test_bewerkstand_annuleren_stuurt_niets():
+    r = _bewerk("tekst=✎ Fills bewerken", "data-nr=3")  # geen BLUESLAB_PROMPT = Annuleren
+    assert len(r["prompts"]) == 1 and r["puts"] == []
+
+
+def test_klaar_zet_tik_weer_op_startpunt():
+    r = _bewerk("tekst=▶ Speel", "tekst=✎ Fills bewerken", "tekst=✎ Klaar", "data-nr=3")
+    assert r["prompts"] == [] and r["starts"] == 2
+
+
+def test_fill_bewaren_mislukt_meldt_en_laat_oude_staan():
+    r = _bewerk("tekst=✎ Fills bewerken", "data-nr=3", schema=_met_fill(SCHEMA, m3=["F", "E"]),
+                BLUESLAB_PROMPT="D H", BLUESLAB_PUT_STATUS="400", BLUESLAB_FOUT="Onbekende noot: 'H'.")
+    assert r["hulp"] == "Fill niet bewaard: Onbekende noot: 'H'."
+    assert "♪ F–E" in r["fills"]
+
+
+def test_herhalingen_andere_fills_klapt_niet_in():
+    delen = [_deel(1, ["Gm", "D7"]), _deel(3, ["Gm", "D7"]), _deel(5, ["Gm", "D7"])]
+    delen[1]["maten"][1]["fill"] = ["F", "E"]
+    delen[2]["maten"][1]["fill"] = ["F", "E"]
+    assert js(f"herhalingen({json.dumps(delen)})") == [None, None, 3]
+
+
+def test_hulptekst_noemt_fills():
+    html = (Path(__file__).parent.parent / "web" / "song.html").read_text()
+    assert "✎ Fills bewerken" in html

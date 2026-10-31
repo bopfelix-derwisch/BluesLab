@@ -2,7 +2,8 @@
 // Gebruik: node tests/web_harness.js <pagina> <http-status voor elke API-aanroep>
 // Omgeving: BLUESLAB_FIXTURES, BLUESLAB_AUDIO, BLUESLAB_ACTIES (zie verderop),
 // BLUESLAB_PIANO (ok | fout | traag | hangt), BLUESLAB_DRUMS (ok | fout), BLUESLAB_PUT_STATUS
-// (status voor PUT-aanroepen) en BLUESLAB_VERBORGEN=1 (pagina niet zichtbaar).
+// (status voor PUT-aanroepen), BLUESLAB_FOUT (detail bij een foutstatus), BLUESLAB_PROMPT
+// (antwoord op prompt(); ontbreekt = Annuleren) en BLUESLAB_VERBORGEN=1 (pagina niet zichtbaar).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -29,6 +30,7 @@ const drumsAntwoord = async () => {
   return { ok, status: ok ? 200 : 404, arrayBuffer: async () => new ArrayBuffer(8) };
 };
 const puts = [];   // [pad, body] van elke PUT
+const prompts = [];  // [vraag, standaard] van elke prompt()
 const gemaakt = [];   // elementen uit createElement, voor BLUESLAB_ACTIES
 const nepElement = (sel) => elementen[sel] || (elementen[sel] = {
   hidden: true, value: "", textContent: "", _attrs: {}, _on: {}, _tekst: "",
@@ -81,7 +83,11 @@ const ctx = {
       status = Number(process.env.BLUESLAB_PUT_STATUS || ikStatus);
     }
     return { status, ok: status < 400,
-      json: async () => (status < 400 ? antwoordVoor(pad) : { detail: "Log eerst in." }) };
+      json: async () => (status < 400 ? antwoordVoor(pad) : { detail: process.env.BLUESLAB_FOUT || "Log eerst in." }) };
+  },
+  prompt: (vraag, standaard) => {
+    prompts.push([vraag, standaard]);
+    return "BLUESLAB_PROMPT" in process.env ? process.env.BLUESLAB_PROMPT : null;
   },
   navigator: { audioSession: { type: "auto" }, wakeLock: { request: async () => { wakelock += 1; return { addEventListener() {} }; } } },
 };
@@ -142,6 +148,6 @@ const inKlik = [];  // resume-aanroepen synchroon binnen elke klik
     speler_zichtbaar: !nepElement("#speler").hidden, maatvakken, fetches, starts,
     audiosessie: ctx.navigator.audioSession.type, resumes, inKlik,
     hulp: nepElement("#hulp").textContent, speelknop: speelknop(),
-    puts, plannen, knoppen: [...new Set(gemaakt.filter(e => e._on.click).map(e => e._tekst))] }));
+    puts, plannen, prompts, fills: gemaakt.filter(e => e.className === "fill").map(e => e.textContent), knoppen: [...new Set(gemaakt.filter(e => e._on.click).map(e => e._tekst))] }));
   process.exit(0);  // een spelende Speler houdt anders de klok (setInterval) open
 })();

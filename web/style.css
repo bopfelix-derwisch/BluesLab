@@ -2,14 +2,14 @@
 :root {
   --bg: #fbf8f3; --fg: #1f1b16; --zacht: #6b6258; --lijn: #e3dcd2;
   --accent: #1d4e89; --accent-fg: #ffffff; --fout: #b3261e; --fout-bg: #fdecea;
-  --wissel: #8a4b00; --wissel-bg: #fff1dc;
+  --wissel: #8a4b00; --wissel-bg: #fff1dc; --fill: #7a3e9d;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #15130f; --fg: #f1ebe2; --zacht: #a59b8f; --lijn: #3a342c;
     --accent: #8db8ee; --accent-fg: #0d1a2b; --fout: #ff8a80; --fout-bg: #3b1715;
-    --wissel: #ffc56b; --wissel-bg: #3a2a10;
+    --wissel: #ffc56b; --wissel-bg: #3a2a10; --fill: #d7a6f2;
   }
 }
 * { box-sizing: border-box; }
@@ -77,6 +77,8 @@ details.deel > summary { font-size: 1.2rem; padding: 10px 0; cursor: pointer; }
 .maatvak .akkoord { font-weight: 700; font-size: 1.45rem; line-height: 1.2; padding-right: 1.4em; }
 .maatvak .tonen { color: var(--zacht); font-size: .9rem; }
 .maatvak .doel { color: var(--accent); font-weight: 700; }
+.maatvak .fill { color: var(--fill); font-weight: 700; }
+.maatvak .fill:empty { display: none; }
 @media (min-width: 600px) {
   .maatraster { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .maatvak .akkoord { font-size: 1.7rem; }
@@ -114,7 +116,8 @@ details.deel > summary { font-size: 1.2rem; padding: 10px 0; cursor: pointer; }
 .maatvak { cursor: pointer; }
 .maatvak.start { box-shadow: inset 0 0 0 2px var(--accent); }
 .maatvak.speelt { background: var(--accent); color: var(--accent-fg); }
-.maatvak.speelt .nr, .maatvak.speelt .tonen, .maatvak.speelt .doel { color: inherit; }
+.maatvak.speelt .nr, .maatvak.speelt .tonen, .maatvak.speelt .doel,
+.maatvak.speelt .fill { color: inherit; }
 .fragment { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0; }
 .fragmentknop { min-height: 44px; text-align: left; }
 .fragment button.stil { min-height: 44px; padding: 4px 6px; }
